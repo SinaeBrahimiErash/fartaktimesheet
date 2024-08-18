@@ -16,7 +16,7 @@ def token_response(token: str):
 def singJWT(username: str):
     payload = {
         "username": username,
-        "expiry": time.time() + 600
+        "expiry": time.time() + 86400
     }
     token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
     return token_response(token)

@@ -20,7 +20,6 @@ from sqlalchemy import func, and_
 from datetime import datetime
 from typing import Optional
 
-
 app = FastAPI()
 models.Base.metadata.create_all(bind=engine)
 
@@ -45,11 +44,13 @@ class User(BaseModel):
     password: str
     role: Role
 
+
 class UserUpdate(BaseModel):
     UserName: Optional[str] = None
     Name: Optional[str] = None
     password: Optional[str] = None
     role: Optional[str] = None
+
 
 class UserLogin(BaseModel):
     username: str
@@ -59,7 +60,6 @@ class UserLogin(BaseModel):
 @app.get('/api/v1/users')
 async def fetch_users(db: Session = Depends(get_db), token: str = Depends(JWTBearer())):
     payload = decodeJWT(token)
-
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid token or token expired")
 
@@ -178,6 +178,7 @@ async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depen
     db.commit()
     return user_model
 
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
@@ -197,7 +198,12 @@ async def register_users(users: User, db: Session = Depends(get_db), token: str 
 
     # بررسی نقش کاربر
     if user.role.value != "admin":
-        raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
+        raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نمیباشید.")
+
+    test_id = db.query(models.User).filter(models.User.id == users.id).first()
+
+    if test_id:
+        return HTTPException(status_code=400, detail="شناسه کاربر تکراری است .")
 
     user_model = models.User()
     hashed_pass = hash_pass(users.password)
@@ -208,16 +214,15 @@ async def register_users(users: User, db: Session = Depends(get_db), token: str 
     user_model.role = users.role
     db.add(user_model)
     db.commit()
-    raise HTTPException(status_code=200 ,detail='کار بر مورد نظر با موفقیت ایجاد شد')
+    raise HTTPException(status_code=200, detail='کار بر مورد نظر با موفقیت ایجاد شد')
 
-
-def check_user(data: UserLogin, db: Session):
-    user_model = db.query(models.User).filter(models.User.UserName == data.username).first()
-    hashed_pass = hash_pass(data.password)
-    if user_model and verify_password(data.password, user_model.password):
-        return True
-    else:
-        return False
+    def check_user(data: UserLogin, db: Session):
+        user_model = db.query(models.User).filter(models.User.UserName == data.username).first()
+        hashed_pass = hash_pass(data.password)
+        if user_model and verify_password(data.password, user_model.password):
+            return True
+        else:
+            return False
 
 
 @app.post("/api/v1/user/login", tags=["user"])
@@ -257,7 +262,6 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
     payload = decodeJWT(token)
 
     if not payload:
-
         raise HTTPException(status_code=401, detail="Invalid token or token expired")
 
     # جستجوی کاربر در پایگاه داده با استفاده از userID از توکن
@@ -300,4 +304,3 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
-
