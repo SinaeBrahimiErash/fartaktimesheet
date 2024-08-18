@@ -18,7 +18,8 @@ from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, 
 import io
 from sqlalchemy import func, and_
 from datetime import datetime
-from dynamic_models import create_table_from_excel
+from typing import Optional
+
 
 app = FastAPI()
 models.Base.metadata.create_all(bind=engine)
@@ -33,7 +34,7 @@ def get_db():
 
 
 class Role(str, Enum):
-    admin = 'admin'
+    admin = 'admin',
     user = 'user'
 
 
@@ -44,6 +45,11 @@ class User(BaseModel):
     password: str
     role: Role
 
+class UserUpdate(BaseModel):
+    UserName: Optional[str] = None
+    Name: Optional[str] = None
+    password: Optional[str] = None
+    role: Optional[str] = None
 
 class UserLogin(BaseModel):
     username: str
@@ -84,7 +90,7 @@ async def fetch_users(db: Session = Depends(get_db), token: str = Depends(JWTBea
     return user_list
 
 
-@app.post('/api/v1/user/', tags=["Post"])
+@app.post('/api/v1/user/profile', tags=["Post"])
 async def profile(token: str = Depends(JWTBearer()), db: Session = Depends(get_db)):
     payload = decodeJWT(token)
     print(payload)
@@ -115,16 +121,17 @@ async def delete_user(user_id: int, db: Session = Depends(get_db), token: str = 
 
     # بررسی اینکه آیا کاربر یافت شده است یا خیر
     if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="کاربر یافت نشد .")
 
     # بررسی نقش کاربر
     if user.role.value != "admin":
-        raise HTTPException(status_code=403, detail="You do not have permission to perform this action.")
+        raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
     user_model = db.query(models.User).filter(models.User.id == user_id).first()
     if user_model is None:
-        raise HTTPException(status_code=404, detail=f"user with id : {user_id} does not exist")
+        raise HTTPException(status_code=404, detail="کاربر یافت نشد .")
     db.query(models.User).filter(models.User.id == user_id).delete()
     db.commit()
+    raise HTTPException(status_code=200, detail='حذف با موفقیت انجام شد .')
 
 
 def hash_pass(password: str):
@@ -136,7 +143,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 
 
 @app.put("/api/v1/user/{user_id}")
-async def update_user(user_id: int, user_update: User, db: Session = Depends(get_db),
+async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get_db),
                       token: str = Depends(JWTBearer())):
     payload = decodeJWT(token)
 
@@ -148,30 +155,34 @@ async def update_user(user_id: int, user_update: User, db: Session = Depends(get
 
     # بررسی اینکه آیا کاربر یافت شده است یا خیر
     if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="کابر یافت نشد.")
     user_model = db.query(models.User).filter(models.User.id == user_id).first()
 
     # بررسی نقش کاربر
     if user.role.value != "admin" and user.id != user_id:
-        raise HTTPException(status_code=403, detail="You do not have permission to perform this action.")
+        raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
 
     if user_model is None:
-        raise HTTPException(status_code=404, detail=f"user with id : {user_id} does not exist")
-    user_model.id = user_update.id
-    user_model.UserName = user_update.UserName
-    user_model.Name = user_update.Name
-    user_model.password = hash_pass(user_update.password)
-    user_model.role = user_update.role
+        raise HTTPException(status_code=404, detail="کابر یافت نشد.")
+
+    if user_update.UserName:
+        user_model.UserName = user_update.UserName
+    if user_update.Name:
+        user_model.Name = user_update.Name
+    if user_update.password:
+        user_model.password = hash_pass(user_update.password)
+    if user_update.role:
+        user_model.role = user_update.role
+    print(user_model)
     db.add(user_model)
     db.commit()
-    return user_update
-
+    return user_model
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
-@app.post('/api/v1/user', dependencies=[Depends(JWTBearer)], tags=["user"])
-async def register_users(user: User, db: Session = Depends(get_db), token: str = Depends(JWTBearer())):
+@app.post('/api/v1/user/register', dependencies=[Depends(JWTBearer)], tags=["user"])
+async def register_users(users: User, db: Session = Depends(get_db), token: str = Depends(JWTBearer())):
     payload = decodeJWT(token)
 
     if not payload:
@@ -182,21 +193,22 @@ async def register_users(user: User, db: Session = Depends(get_db), token: str =
 
     # بررسی اینکه آیا کاربر یافت شده است یا خیر
     if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="کابر یافت نشد.")
 
     # بررسی نقش کاربر
     if user.role.value != "admin":
-        raise HTTPException(status_code=403, detail="You do not have permission to perform this action.")
+        raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
+
     user_model = models.User()
-    hashed_pass = hash_pass(user.password)
-    user_model.id = user.id
-    user_model.UserName = user.UserName
-    user_model.Name = user.Name
+    hashed_pass = hash_pass(users.password)
+    user_model.id = users.id
+    user_model.UserName = users.UserName
+    user_model.Name = users.Name
     user_model.password = hashed_pass
-    user_model.role = user.role
+    user_model.role = users.role
     db.add(user_model)
     db.commit()
-    return singJWT(user.UserName)
+    raise HTTPException(status_code=200 ,detail='کار بر مورد نظر با موفقیت ایجاد شد')
 
 
 def check_user(data: UserLogin, db: Session):
@@ -208,81 +220,35 @@ def check_user(data: UserLogin, db: Session):
         return False
 
 
-@app.post("/api/v1/user/login/", tags=["user"])
+@app.post("/api/v1/user/login", tags=["user"])
 async def user_login(user: UserLogin, db: Session = Depends(get_db)):
     if check_user(user, db):
         return singJWT(user.username)
     else:
-        raise HTTPException(status_code=401, detail="password not match")
+        raise HTTPException(status_code=401, message="نام کاربری یا رمز عبور اشتباه است .")
 
 
-# def process_data(db: Session, table_name: str):
-#     try:
-#         # بارگذاری جدول با استفاده از نام جدول
-#         metadata = MetaData(bind=engine)
-#         temp_table = Table(table_name, metadata, autoload_with=engine)
-#
-#         # گروه‌بندی داده‌ها بر اساس user_id و date
-#         query = db.query(
-#             temp_table.c.user_id,
-#             temp_table.c.date,
-#             func.group_concat(temp_table.c.time, ',').label('times')
-#         ).group_by(temp_table.c.user_id, temp_table.c.date).all()
-#
-#         # اضافه کردن داده‌های گروه‌بندی شده به جدول sorted_data
-#         for record in query:
-#             sorted_data = models.SortedData(
-#                 user_id=record.user_id,
-#                 date=record.date,
-#                 times=record.times
-#             )
-#             db.add(sorted_data)
-#         db.commit()
-#
-#     except Exception as e:
-#         db.rollback()
-#         print(f"Error processing data: {str(e)}")
-
-def process_and_delete_data(db: Session, table_name: str):
-    try:
-        # بارگذاری metadata بدون استفاده از پارامتر bind
-        metadata = MetaData()
-        # بارگذاری جدول با استفاده از نام جدول
-        temp_table = Table(table_name, metadata, autoload_with=db.bind)
-
-        # گروه‌بندی داده‌ها بر اساس user_id و date
-        query = db.query(
-            temp_table.c.user_id,
-            temp_table.c.date,
-            func.group_concat(temp_table.c.time, ',').label('times')
-        ).group_by(temp_table.c.user_id, temp_table.c.date).all()
-
-        # اضافه کردن داده‌های گروه‌بندی شده به جدول sorted_data
-        for record in query:
-            sorted_data = models.SortedData(
-                user_id=record.user_id,
-                date=record.date,
-                times=record.times
-            )
-            db.add(sorted_data)
-        db.commit()
-
-        # حذف جدول اصلی پس از پردازش داده‌ها
-        temp_table.drop(db.bind)
-        db.commit()
-
-    except Exception as e:
-        db.rollback()
-        print(f"Error processing and deleting data: {str(e)}")
-
-
-async def read_excel(file: UploadFile):
+async def read_and_process_excel(file: UploadFile):
+    # خواندن محتویات فایل اکسل
     contents = await file.read()
     buffer = io.BytesIO(contents)
+
+    # تبدیل محتویات به DataFrame
     df = pd.read_excel(buffer)
-    print(df.columns)  # بررسی ستون‌ها
+
+    # نمایش ستون‌ها و پنج ردیف اول برای بررسی
+    print(df.columns)
     print(df.head())
-    return df
+
+    # مرتب‌سازی داده‌ها بر اساس user_id و date و time (در صورت نیاز)
+    df = df.sort_values(by=['id', 'date', 'time'])
+
+    # ادغام زمان‌ها برای هر کاربر و تاریخ
+    df_grouped = df.groupby(['id', 'date'])['time'].apply(lambda x: ','.join(x.astype(str))).reset_index()
+
+    print(df_grouped.head())  # نمایش داده‌های اصلاح شده
+
+    return df_grouped
 
 
 @app.post("/api/v1/upload_excel/", tags=["admin"])
@@ -291,47 +257,47 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
     payload = decodeJWT(token)
 
     if not payload:
+
         raise HTTPException(status_code=401, detail="Invalid token or token expired")
-    print(payload)
+
     # جستجوی کاربر در پایگاه داده با استفاده از userID از توکن
     user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
 
-    print(user.role.value)
-
     # بررسی اینکه آیا کاربر یافت شده است یا خیر
     if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=404, detail="کابر یافت نشد.")
 
     # بررسی نقش کاربر
     if user.role.value != "admin":
         raise HTTPException(status_code=403, detail="You do not have permission to perform this action.")
-
     try:
-        filename = file.filename
-        table_name = os.path.splitext(filename)[0]
-        content = await file.read()
-        df = pd.read_excel(io.BytesIO(content))
+        df_grouped = await read_and_process_excel(file)
+
+        # 2. درج داده‌های پردازش‌شده در دیتابیس
+        table_name = os.path.splitext(file.filename)[0]
 
         metadata = MetaData()
         table = Table(
             table_name, metadata,
             Column('user_id', String),
             Column('date', String),
-            Column('time', String)
+            Column('times', String)
         )
 
-        metadata.create_all(bind=engine)
+        metadata.create_all(bind=db.bind)
 
-        for index, row in df.iterrows():
+        for index, row in df_grouped.iterrows():
             insert_stmt = table.insert().values(
                 user_id=row['id'],
                 date=row['date'],
-                time=row['time']
+                times=row['time']
             )
             db.execute(insert_stmt)
 
         db.commit()
-        process_and_delete_data(table_name=table_name)
-        return {"message": f"File {filename} processed and data inserted into table {table_name}."}
+
+        return {"message": f"File {file.filename} processed and data inserted into table {table_name}."}
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
+

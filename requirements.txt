@@ -1,0 +1,11 @@
+fastapi
+pydantic
+passlib
+sqlalchemy
+enum
+pandas
+os
+io
+jwt
+decouple
+time

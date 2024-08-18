@@ -9,7 +9,7 @@ JWT_ALGORITHM = config("algorithm")
 
 def token_response(token: str):
     return {
-        "access token": token
+        "access_token": token
     }
 
 
