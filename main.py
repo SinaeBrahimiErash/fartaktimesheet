@@ -14,11 +14,12 @@ from auth.jwt_handler import singJWT
 from auth.jwt_bearer import decodeJWT
 import shutil
 import pandas as pd
-from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Time, Table
+from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Time, Table, select
 import io
 from sqlalchemy import func, and_
 from datetime import datetime
 from typing import Optional
+import aiofiles
 
 app = FastAPI()
 models.Base.metadata.create_all(bind=engine)
@@ -231,28 +232,34 @@ async def user_login(user: UserLogin, db: Session = Depends(get_db)):
     if check_user(user, db):
         return singJWT(user.username)
     else:
-        raise HTTPException(status_code=401, message="نام کاربری یا رمز عبور اشتباه است .")
+        raise HTTPException(status_code=400, detail="نام کاربری یا رمز عبور اشتباه است .")
 
 
 async def read_and_process_excel(file: UploadFile):
-    # خواندن محتویات فایل اکسل
-    contents = await file.read()
-    buffer = io.BytesIO(contents)
+    # ساخت مسیر ذخیره فایل
+    upload_directory = "uploads"
+    file_path = os.path.join(upload_directory, file.filename)
 
-    # تبدیل محتویات به DataFrame
-    df = pd.read_excel(buffer)
+    # اطمینان از وجود دایرکتوری uploads
+    if not os.path.exists(upload_directory):
+        os.makedirs(upload_directory)
 
-    # نمایش ستون‌ها و پنج ردیف اول برای بررسی
-    print(df.columns)
-    print(df.head())
+    # ذخیره کردن فایل به صورت غیرهمزمان
+    async with aiofiles.open(file_path, 'wb') as out_file:
+        content = await file.read()  # خواندن محتوای فایل
+        await out_file.write(content)  # نوشتن محتوای فایل در مسیر مشخص شده
 
+    # استفاده از محتوای خوانده شده برای پردازش اکسل
+    buffer = io.BytesIO(content)  # ایجاد یک buffer از محتوای فایل
+    df = pd.read_excel(buffer)  # تبدیل محتوای buffer به DataFrame
+
+    df = df.iloc[:, :3]  # انتخاب سه ستون اول
+    df.columns = ['id', 'date', 'time']
     # مرتب‌سازی داده‌ها بر اساس user_id و date و time (در صورت نیاز)
     df = df.sort_values(by=['id', 'date', 'time'])
 
     # ادغام زمان‌ها برای هر کاربر و تاریخ
     df_grouped = df.groupby(['id', 'date'])['time'].apply(lambda x: ','.join(x.astype(str))).reset_index()
-
-    print(df_grouped.head())  # نمایش داده‌های اصلاح شده
 
     return df_grouped
 
@@ -301,7 +308,57 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
 
         db.commit()
 
-        return {"فایل با موفقیت آپلود شد ."}
+        return HTTPException(status_code=200, detail="فایل با موفقیت آپلود شد .")
+    except:
+        raise HTTPException(status_code=400, detail='فرمت فایل نا معتبر است .')
+
+
+def get_table_by_name(table_name: str, db):
+    # ایجاد شیء MetaData بدون آرگومان bind
+    metadata = MetaData()
+
+    # بارگذاری تمام جداول دیتابیس با استفاده از اتصال db
+    metadata.reflect(bind=db.bind)
+
+    print(f"Looking for table: {table_name}")  # برای اشکال‌زدایی
+    if table_name in metadata.tables:
+        table = metadata.tables[table_name]
+        print(f"Table found: {table}")  # برای اشکال‌زدایی
+        return table
+    else:
+        print(f"Table {table_name} not found")  # برای اشکال‌زدایی
+        raise ValueError(f"Table {table_name} not found")
+
+
+def query_data_from_table(table, user_id: str, db):
+    stmt = select(table).where(table.c.user_id == user_id)
+
+    # استفاده از Connection برای اجرای کوئری
+    with db.bind.connect() as connection:
+        result = connection.execute(stmt)
+
+        return result.fetchall()
+
+
+@app.post("/api/v1/time_sheet/", tags=["admin"])
+async def get_user_data(user_id: str, year_month: str, db: Session = Depends(get_db)):
+    try:
+
+        table_name = year_month
+        # print(table_name)
+        # بررسی اینکه آیا جدول با این نام وجود دارد
+        try:
+            table = get_table_by_name(table_name, db)
+            print(table)
+        except Exception as e:
+            print(f"An error occurred: {str(e)}")  # ثبت کامل خطا
+            raise HTTPException(status_code=404, detail=f"Table {table_name} not found")
+
+        # جستجوی داده‌ها برای user_id مشخص شده
+        date = query_data_from_table(table, user_id, db)
+        arry = []
+        for i in date:
+            arry.append({"id": i[0], "date": i[1], "time": i[2].split(',')})
+        return arry
     except Exception as e:
-        db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
