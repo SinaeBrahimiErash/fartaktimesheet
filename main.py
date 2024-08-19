@@ -274,7 +274,7 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
 
     # بررسی نقش کاربر
     if user.role.value != "admin":
-        raise HTTPException(status_code=403, detail="You do not have permission to perform this action.")
+        raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
     try:
         df_grouped = await read_and_process_excel(file)
 
