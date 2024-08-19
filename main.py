@@ -173,10 +173,10 @@ async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depen
         user_model.password = hash_pass(user_update.password)
     if user_update.role:
         user_model.role = user_update.role
-    print(user_model)
+
     db.add(user_model)
     db.commit()
-    return user_model
+    raise HTTPException(status_code=200, detail='اظلاعات کاربر با موفقیت ویراش شد .')
 
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -216,13 +216,14 @@ async def register_users(users: User, db: Session = Depends(get_db), token: str 
     db.commit()
     raise HTTPException(status_code=200, detail='کار بر مورد نظر با موفقیت ایجاد شد')
 
-    def check_user(data: UserLogin, db: Session):
-        user_model = db.query(models.User).filter(models.User.UserName == data.username).first()
-        hashed_pass = hash_pass(data.password)
-        if user_model and verify_password(data.password, user_model.password):
-            return True
-        else:
-            return False
+
+def check_user(data: UserLogin, db: Session):
+    user_model = db.query(models.User).filter(models.User.UserName == data.username).first()
+    hashed_pass = hash_pass(data.password)
+    if user_model and verify_password(data.password, user_model.password):
+        return True
+    else:
+        return False
 
 
 @app.post("/api/v1/user/login", tags=["user"])
@@ -256,7 +257,7 @@ async def read_and_process_excel(file: UploadFile):
     return df_grouped
 
 
-@app.post("/api/v1/upload_excel/", tags=["admin"])
+@app.post("/api/v1/upload_excel", tags=["admin"])
 async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_db), token: str = Depends(JWTBearer())):
     # توکن را از JWTBearer دریافت کنید
     payload = decodeJWT(token)
@@ -300,7 +301,7 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
 
         db.commit()
 
-        return {"message": f"File {file.filename} processed and data inserted into table {table_name}."}
+        return {"فایل با موفقیت آپلود شد ."}
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(e))
