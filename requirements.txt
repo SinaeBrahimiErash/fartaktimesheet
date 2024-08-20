@@ -2,12 +2,11 @@ fastapi
 pydantic
 passlib
 sqlalchemy
-enum
+StrEnum
 pandas
-os
-io
 jwt
-decouple
-time
+python-decouple
 openpyxl
 aiofiles
+persiantools
+jdatetime

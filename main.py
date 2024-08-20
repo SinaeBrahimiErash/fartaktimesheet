@@ -20,6 +20,8 @@ from sqlalchemy import func, and_
 from datetime import datetime
 from typing import Optional
 import aiofiles
+from persiantools.jdatetime import JalaliDate
+import jdatetime
 
 app = FastAPI()
 models.Base.metadata.create_all(bind=engine)
@@ -236,7 +238,6 @@ async def user_login(user: UserLogin, db: Session = Depends(get_db)):
 
 
 async def read_and_process_excel(file: UploadFile):
-    # ساخت مسیر ذخیره فایل
     upload_directory = "uploads"
     file_path = os.path.join(upload_directory, file.filename)
 
@@ -261,7 +262,69 @@ async def read_and_process_excel(file: UploadFile):
     # ادغام زمان‌ها برای هر کاربر و تاریخ
     df_grouped = df.groupby(['id', 'date'])['time'].apply(lambda x: ','.join(x.astype(str))).reset_index()
 
-    return df_grouped
+    unique_users = df_grouped['id'].unique()
+    first_date_str = df_grouped['date'].iloc[0]
+    first_date = JalaliDate(int(first_date_str.split('/')[0]),
+                            int(first_date_str.split('/')[1]),
+                            int(first_date_str.split('/')[2])).to_gregorian()
+    jalali_first_date = JalaliDate.to_jalali(first_date)
+    # استخراج سال و ماه شمسی
+    jalali_year = jalali_first_date.year
+
+    jalali_month = jalali_first_date.month
+
+
+    if jalali_month <= 6:
+        num_days_in_month = 31
+    elif jalali_month <= 11:
+        num_days_in_month = 30
+    else:
+        num_days_in_month = 29
+
+    date_range = pd.date_range(start=JalaliDate(jalali_year, jalali_month, 1).to_gregorian(),
+                               periods=num_days_in_month, freq='D')
+
+    date_range_jalali = [JalaliDate.to_jalali(d).strftime('%Y/%m/%d') for d in date_range]
+
+    final_data = []
+    for user in unique_users:
+        print(user, "user")
+        user_data = df_grouped[df_grouped['id'] == user]
+
+        for date in date_range_jalali:
+            print(date, "date")
+            print(user_data['date'].values)
+
+            if date in user_data['date'].values:
+                time = user_data[user_data['date'] == date]['time'].values[0]
+                print(time)
+            else:
+
+                formatted_date = date.replace('/', '-')
+                # بررسی روز هفته برای تاریخ جاری
+
+                jalali_date = jdatetime.date.fromisoformat(formatted_date)
+
+                weekday = jalali_date.togregorian().weekday()
+
+
+                if weekday == 3 or weekday == 4:  # پنج‌شنبه و جمعه
+                    time = 'تعطیل'
+                else:
+                    time = 'غیبت'
+
+            # افزودن داده به لیست نهایی
+            final_data.append({
+                'id': user,
+                'date': date,
+                'time': time
+            })
+
+    # تبدیل لیست نهایی به DataFrame
+    final_df = pd.DataFrame(final_data)
+
+    # بررسی داده‌های نهایی برای اطمینان از درستی پردازش
+    return final_df
 
 
 @app.post("/api/v1/upload_excel", tags=["admin"])
@@ -284,7 +347,7 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
         raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
     try:
         df_grouped = await read_and_process_excel(file)
-
+        print(df_grouped)
         # 2. درج داده‌های پردازش‌شده در دیتابیس
         table_name = os.path.splitext(file.filename)[0]
 
@@ -320,10 +383,9 @@ def get_table_by_name(table_name: str, db):
     # بارگذاری تمام جداول دیتابیس با استفاده از اتصال db
     metadata.reflect(bind=db.bind)
 
-    print(f"Looking for table: {table_name}")  # برای اشکال‌زدایی
     if table_name in metadata.tables:
         table = metadata.tables[table_name]
-        print(f"Table found: {table}")  # برای اشکال‌زدایی
+
         return table
     else:
         print(f"Table {table_name} not found")  # برای اشکال‌زدایی
@@ -336,29 +398,40 @@ def query_data_from_table(table, user_id: str, db):
     # استفاده از Connection برای اجرای کوئری
     with db.bind.connect() as connection:
         result = connection.execute(stmt)
-
         return result.fetchall()
 
 
-@app.post("/api/v1/time_sheet/", tags=["admin"])
-async def get_user_data(user_id: str, year_month: str, db: Session = Depends(get_db)):
+@app.post("/api/v1/time_sheet", tags=["admin"])
+async def get_user_data(user_id: int, year_month: str, db: Session = Depends(get_db),
+                        token: str = Depends(JWTBearer())):
+    payload = decodeJWT(token)
+
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid token or token expired")
+
+    user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
+
+    if user is None:
+        raise HTTPException(status_code=404, detail="کابر یافت نشد.")
+
+    # بررسی نقش کاربر
+    if user.role.value != "admin" and user.id != user_id:
+        raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
+
+    table_name = year_month
+
     try:
+        table = get_table_by_name(table_name, db)
 
-        table_name = year_month
-        # print(table_name)
-        # بررسی اینکه آیا جدول با این نام وجود دارد
-        try:
-            table = get_table_by_name(table_name, db)
-            print(table)
-        except Exception as e:
-            print(f"An error occurred: {str(e)}")  # ثبت کامل خطا
-            raise HTTPException(status_code=404, detail=f"Table {table_name} not found")
-
-        # جستجوی داده‌ها برای user_id مشخص شده
-        date = query_data_from_table(table, user_id, db)
-        arry = []
-        for i in date:
-            arry.append({"id": i[0], "date": i[1], "time": i[2].split(',')})
-        return arry
     except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        print(f"An error occurred: {str(e)}")  # ثبت کامل خطا
+        raise HTTPException(status_code=404, detail="اطلاعاتی دریافت نشد .")
+
+    # جستجوی داده‌ها برای user_id مشخص شده
+    date = query_data_from_table(table, user_id, db)
+    if len(date) == 0:
+        raise HTTPException(status_code=404, detail='کاربر یافت نشد .')
+    arry = []
+    for i in date:
+        arry.append({"id": i[0], "date": i[1], "time": i[2].split(',')})
+    return arry
