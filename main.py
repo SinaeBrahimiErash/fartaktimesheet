@@ -273,7 +273,6 @@ async def read_and_process_excel(file: UploadFile):
 
     jalali_month = jalali_first_date.month
 
-
     if jalali_month <= 6:
         num_days_in_month = 31
     elif jalali_month <= 11:
@@ -288,36 +287,32 @@ async def read_and_process_excel(file: UploadFile):
 
     final_data = []
     for user in unique_users:
-        print(user, "user")
+
         user_data = df_grouped[df_grouped['id'] == user]
 
         for date in date_range_jalali:
-            print(date, "date")
-            print(user_data['date'].values)
-
             if date in user_data['date'].values:
                 time = user_data[user_data['date'] == date]['time'].values[0]
-                print(time)
+                day_type = "0"
             else:
+                time = ""
 
                 formatted_date = date.replace('/', '-')
-                # بررسی روز هفته برای تاریخ جاری
-
                 jalali_date = jdatetime.date.fromisoformat(formatted_date)
 
                 weekday = jalali_date.togregorian().weekday()
 
-
                 if weekday == 3 or weekday == 4:  # پنج‌شنبه و جمعه
-                    time = 'تعطیل'
+                    day_type = "1"
                 else:
-                    time = 'غیبت'
+                    day_type = "0"
 
             # افزودن داده به لیست نهایی
             final_data.append({
                 'id': user,
                 'date': date,
-                'time': time
+                'time': time,
+                'day_type': day_type
             })
 
     # تبدیل لیست نهایی به DataFrame
@@ -356,7 +351,8 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
             table_name, metadata,
             Column('user_id', String),
             Column('date', String),
-            Column('times', String)
+            Column('times', String),
+            Column('day_type', String)
         )
 
         metadata.create_all(bind=db.bind)
@@ -365,7 +361,8 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
             insert_stmt = table.insert().values(
                 user_id=row['id'],
                 date=row['date'],
-                times=row['time']
+                times=row['time'],
+                day_type=row['day_type']
             )
             db.execute(insert_stmt)
 
@@ -423,9 +420,10 @@ async def get_user_data(user_id: int, year_month: str, db: Session = Depends(get
     try:
         table = get_table_by_name(table_name, db)
 
-    except Exception as e:
-        print(f"An error occurred: {str(e)}")  # ثبت کامل خطا
-        raise HTTPException(status_code=404, detail="اطلاعاتی دریافت نشد .")
+    except:
+        return []
+
+        raise HTTPException(status_code=200, detail="اطلاعاتی دریافت نشد .")
 
     # جستجوی داده‌ها برای user_id مشخص شده
     date = query_data_from_table(table, user_id, db)
