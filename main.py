@@ -431,5 +431,5 @@ async def get_user_data(user_id: int, year_month: str, db: Session = Depends(get
         raise HTTPException(status_code=404, detail='کاربر یافت نشد .')
     arry = []
     for i in date:
-        arry.append({"id": i[0], "date": i[1], "time": i[2].split(',')})
+        arry.append({"id": i[0], "date": i[1], "time": i[2].split(','), "date_type": i[3]})
     return arry
