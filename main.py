@@ -291,7 +291,7 @@ async def read_and_process_excel(file: UploadFile):
         user_data = df_grouped[df_grouped['id'] == user]
 
         for date in date_range_jalali:
-            descriptions = ""
+            description = ""
             if date in user_data['date'].values:
                 time = user_data[user_data['date'] == date]['time'].values[0]
                 day_type = "0"
@@ -315,7 +315,7 @@ async def read_and_process_excel(file: UploadFile):
                 'date': date,
                 'time': time,
                 'day_type': day_type,
-                'descriptions': descriptions
+                'description': description
             })
 
     # تبدیل لیست نهایی به DataFrame
@@ -356,7 +356,7 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
             Column('date', String),
             Column('times', String),
             Column('day_type', String),
-            Column('descriptions', String)
+            Column('description', String)
         )
 
         metadata.create_all(bind=db.bind)
@@ -370,7 +370,7 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
                     date=row['date'],
                     times=row['time'],
                     day_type=row['day_type'],
-                    descriptions=row['descriptions']
+                    descriptions=row['description']
                 )
                 db.execute(insert_stmt)
             except Exception as e:
@@ -442,5 +442,5 @@ async def get_user_data(user_id: int, year_month: str, db: Session = Depends(get
         raise HTTPException(status_code=404, detail='کاربر یافت نشد .')
     arry = []
     for i in date:
-        arry.append({"id": i[0], "date": i[1], "time": i[2].split(','), "date_type": i[3], 'descriptions': i[4]})
+        arry.append({"id": i[0], "date": i[1], "time": i[2].split(','), "date_type": i[3], 'description': i[4]})
     return arry
