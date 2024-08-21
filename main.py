@@ -291,9 +291,11 @@ async def read_and_process_excel(file: UploadFile):
         user_data = df_grouped[df_grouped['id'] == user]
 
         for date in date_range_jalali:
+            descriptions = ""
             if date in user_data['date'].values:
                 time = user_data[user_data['date'] == date]['time'].values[0]
                 day_type = "0"
+
             else:
                 time = ""
 
@@ -312,7 +314,8 @@ async def read_and_process_excel(file: UploadFile):
                 'id': user,
                 'date': date,
                 'time': time,
-                'day_type': day_type
+                'day_type': day_type,
+                'descriptions': descriptions
             })
 
     # تبدیل لیست نهایی به DataFrame
@@ -342,7 +345,7 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
         raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
     try:
         df_grouped = await read_and_process_excel(file)
-        print(df_grouped)
+
         # 2. درج داده‌های پردازش‌شده در دیتابیس
         table_name = os.path.splitext(file.filename)[0]
 
@@ -352,25 +355,33 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
             Column('user_id', String),
             Column('date', String),
             Column('times', String),
-            Column('day_type', String)
+            Column('day_type', String),
+            Column('descriptions', String)
         )
 
         metadata.create_all(bind=db.bind)
 
         for index, row in df_grouped.iterrows():
-            insert_stmt = table.insert().values(
-                user_id=row['id'],
-                date=row['date'],
-                times=row['time'],
-                day_type=row['day_type']
-            )
-            db.execute(insert_stmt)
+
+            try:
+
+                insert_stmt = table.insert().values(
+                    user_id=row['id'],
+                    date=row['date'],
+                    times=row['time'],
+                    day_type=row['day_type'],
+                    descriptions=row['descriptions']
+                )
+                db.execute(insert_stmt)
+            except Exception as e:
+                print(f"Failed to insert row {index}: {e} ,Data: {row}")
 
         db.commit()
 
         return HTTPException(status_code=200, detail="فایل با موفقیت آپلود شد .")
-    except:
-        raise HTTPException(status_code=400, detail='فرمت فایل نا معتبر است .')
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f'فرمت فایل نا معتبر است: {e}')
 
 
 def get_table_by_name(table_name: str, db):
