@@ -2,7 +2,7 @@ import os
 from sqlalchemy.exc import IntegrityError
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.security import HTTPAuthorizationCredentials
-from pydantic import BaseModel
+from dynamic_models import Role, User, UserLogin, UserUpdate, Time_sheet_edit
 from passlib.context import CryptContext
 from typing import List
 from sqlalchemy.orm import Session
@@ -14,11 +14,11 @@ from auth.jwt_handler import singJWT
 from auth.jwt_bearer import decodeJWT
 import shutil
 import pandas as pd
-from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Time, Table, select
+from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Time, Table, select, update
 import io
 from sqlalchemy import func, and_
 from datetime import datetime
-from typing import Optional
+
 import aiofiles
 from persiantools.jdatetime import JalaliDate
 import jdatetime
@@ -33,31 +33,6 @@ def get_db():
         yield db
     finally:
         db.close()
-
-
-class Role(str, Enum):
-    admin = 'admin',
-    user = 'user'
-
-
-class User(BaseModel):
-    id: int
-    UserName: str
-    Name: str
-    password: str
-    role: Role
-
-
-class UserUpdate(BaseModel):
-    UserName: Optional[str] = None
-    Name: Optional[str] = None
-    password: Optional[str] = None
-    role: Optional[str] = None
-
-
-class UserLogin(BaseModel):
-    username: str
-    password: str
 
 
 @app.get('/api/v1/users')
@@ -96,9 +71,9 @@ async def fetch_users(db: Session = Depends(get_db), token: str = Depends(JWTBea
 @app.post('/api/v1/user/profile', tags=["Post"])
 async def profile(token: str = Depends(JWTBearer()), db: Session = Depends(get_db)):
     payload = decodeJWT(token)
-    print(payload)
+
     user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
-    print(user)
+
     if user is None:
         raise HTTPException(status_code=401, detail="user with id  does not exist")
     user_dict = {
@@ -292,6 +267,7 @@ async def read_and_process_excel(file: UploadFile):
 
         for date in date_range_jalali:
             description = ""
+            times_edited = ""
             if date in user_data['date'].values:
                 time = user_data[user_data['date'] == date]['time'].values[0]
                 day_type = "0"
@@ -315,7 +291,8 @@ async def read_and_process_excel(file: UploadFile):
                 'date': date,
                 'time': time,
                 'day_type': day_type,
-                'description': description
+                'description': description,
+                'times_edited': times_edited,
             })
 
     # تبدیل لیست نهایی به DataFrame
@@ -356,7 +333,8 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
             Column('date', String),
             Column('times', String),
             Column('day_type', String),
-            Column('description', String)
+            Column('description', String),
+            Column('times_edited', String)
         )
 
         metadata.create_all(bind=db.bind)
@@ -370,7 +348,8 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
                     date=row['date'],
                     times=row['time'],
                     day_type=row['day_type'],
-                    descriptions=row['description']
+                    description=row['description'],
+                    times_edited=row['times_edited']
                 )
                 db.execute(insert_stmt)
             except Exception as e:
@@ -442,5 +421,56 @@ async def get_user_data(user_id: int, year_month: str, db: Session = Depends(get
         raise HTTPException(status_code=404, detail='کاربر یافت نشد .')
     arry = []
     for i in date:
-        arry.append({"id": i[0], "date": i[1], "time": i[2].split(','), "date_type": i[3], 'description': i[4]})
+        arry.append({"id": i[0], "date": i[1], "time": i[2].split(','), "date_type": i[3], 'description': i[4],
+                     'times_edited': i[5].split(',')})
     return arry
+
+
+@app.post("/api/v1/edit_time_sheet", tags=["admin"])
+async def edit_time_sheet(time_sheet_edit: Time_sheet_edit, db: Session = Depends(get_db),
+                          token: str = Depends(JWTBearer())):
+    payload = decodeJWT(token)
+
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid token or token expired")
+
+    # جستجوی کاربر در پایگاه داده با استفاده از userID از توکن
+    user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
+
+    # بررسی اینکه آیا کاربر یافت شده است یا خیر
+    if user is None:
+        raise HTTPException(status_code=404, detail="کاربر یافت نشد.")
+
+    # دریافت داده‌ها از درخواست
+    table_name = time_sheet_edit.table_name
+    user_id = time_sheet_edit.id
+    date = time_sheet_edit.date
+    times = time_sheet_edit.newtime
+
+    # بررسی اینکه آیا کاربر ادمین است یا ID کاربر با ID درخواستی مطابقت دارد
+    if user.role.value != "admin" and user.UserName != user_id:
+        raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
+    newtime_str = ','.join(times)
+    try:
+        # بارگذاری متادیتا و دریافت جدول
+        metadata = MetaData()
+        table = Table(table_name, metadata, autoload_with=db.bind)
+
+        # یافتن ردیفی که با user_id و date مطابقت دارد
+        stmt = table.select().where(table.c.user_id == user_id).where(table.c.date == date)
+        result = db.execute(stmt).fetchone()
+
+        if not result:
+            raise HTTPException(status_code=404, detail="ردیف مورد نظر یافت نشد.")
+
+        # بروزرسانی ستون times_edited
+        update_stmt = update(table).where(table.c.user_id == user_id).where(table.c.date == date).values(
+
+            times_edited=newtime_str)
+        db.execute(update_stmt)
+        db.commit()
+
+        return {"detail": "ویرایش با موفقیت انجام شد."}
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"خطا در ویرایش داده‌ها: {e}")

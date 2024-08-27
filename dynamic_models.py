@@ -1,17 +1,36 @@
-# from sqlalchemy import MetaData, Table, Column, Integer, String, DateTime
-# from database import engine
-# import os
-#
-# metadata = MetaData()
-#
-# def create_table_from_excel(file_name):
-#     table_name = os.path.splitext(file_name)[0]
-#     table = Table(
-#         table_name, metadata,
-#         Column('id', Integer, primary_key=True, autoincrement=True),
-#         Column('userid', String),
-#         Column('date', DateTime),
-#         Column('time', String),
-#     )
-#     metadata.create_all(engine)  # ایجاد جداول در پایگاه داده
-#     return table
+from pydantic import BaseModel
+from typing import Optional
+from enum import Enum
+from typing import List
+
+
+class Role(str, Enum):
+    admin = 'admin',
+    user = 'user'
+
+
+class User(BaseModel):
+    id: int
+    UserName: str
+    Name: str
+    password: str
+    role: Role
+
+
+class UserUpdate(BaseModel):
+    UserName: Optional[str] = None
+    Name: Optional[str] = None
+    password: Optional[str] = None
+    role: Optional[str] = None
+
+
+class UserLogin(BaseModel):
+    username: str
+    password: str
+
+
+class Time_sheet_edit(BaseModel):
+    id: int
+    table_name: str
+    date: str
+    newtime: List[str]
