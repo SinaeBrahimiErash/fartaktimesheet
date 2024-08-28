@@ -422,9 +422,12 @@ async def get_user_data(user_id: int, year_month: str, db: Session = Depends(get
     arry = []
     for i in date:
         times_edited = i[5].split(',')
+        times = i[2].split(',')
         if times_edited == ['']:
             times_edited = []
-        arry.append({"id": i[0], "date": i[1], "times": i[2].split(','), "date_type": i[3], 'description': i[4],
+        if times == ['']:
+            times = []
+        arry.append({"id": i[0], "date": i[1], "times": times, "date_type": i[3], 'description': i[4],
                      'times_edited': times_edited})
     return arry
 
