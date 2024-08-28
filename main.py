@@ -516,9 +516,9 @@ async def Add_Description(description: Desciption, db: Session = Depends(get_db)
 
         result = result[4]
         if result:
-            massage = "ویرایش با موفقت انجام شد."
+            massage = "ویرایش با موفقیت انجام شد."
         else:
-            massage = "توضیحات با موفقت ثبت شد."
+            massage = "توضیحات با موفقیت ثبت شد."
 
             # بروزرسانی ستون times_edited
         update_stmt = update(table).where(table.c.user_id == user_id).where(table.c.date == date).values(
