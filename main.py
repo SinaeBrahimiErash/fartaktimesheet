@@ -511,9 +511,14 @@ async def Add_Description(description: Desciption, db: Session = Depends(get_db)
         table = Table(table_name, metadata, autoload_with=db.bind)
         stmt = table.select().where(table.c.user_id == user_id).where(table.c.date == date)
         result = db.execute(stmt).fetchone()
-
         if not result:
             raise HTTPException(status_code=404, detail="ردیف مورد نظر یافت نشد.")
+
+        result = result[4]
+        if result:
+            massage = "ویرایش با موفقت انجام شد."
+        else:
+            massage = "توضیحات با موفقت ثبت شد."
 
             # بروزرسانی ستون times_edited
         update_stmt = update(table).where(table.c.user_id == user_id).where(table.c.date == date).values(
@@ -521,7 +526,7 @@ async def Add_Description(description: Desciption, db: Session = Depends(get_db)
         db.execute(update_stmt)
         db.commit()
 
-        return {"detail": "ویرایش با موفقیت انجام شد."}
+        return {"detail": massage}
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"خطا در ویرایش داده‌ها: {e}")
