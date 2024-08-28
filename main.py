@@ -2,7 +2,7 @@ import os
 from sqlalchemy.exc import IntegrityError
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.security import HTTPAuthorizationCredentials
-from dynamic_models import Role, User, UserLogin, UserUpdate, Time_sheet_edit
+from dynamic_models import Role, User, UserLogin, UserUpdate, Time_sheet_edit, Desciption
 from passlib.context import CryptContext
 from typing import List
 from sqlalchemy.orm import Session
@@ -421,8 +421,11 @@ async def get_user_data(user_id: int, year_month: str, db: Session = Depends(get
         raise HTTPException(status_code=404, detail='کاربر یافت نشد .')
     arry = []
     for i in date:
-        arry.append({"id": i[0], "date": i[1], "time": i[2].split(','), "date_type": i[3], 'description': i[4],
-                     'times_edited': i[5].split(',')})
+        times_edited = i[5].split(',')
+        if times_edited == ['']:
+            times_edited = []
+        arry.append({"id": i[0], "date": i[1], "times": i[2].split(','), "date_type": i[3], 'description': i[4],
+                     'times_edited': times_edited})
     return arry
 
 
@@ -448,7 +451,7 @@ async def edit_time_sheet(time_sheet_edit: Time_sheet_edit, db: Session = Depend
     times = time_sheet_edit.newtime
 
     # بررسی اینکه آیا کاربر ادمین است یا ID کاربر با ID درخواستی مطابقت دارد
-    if user.role.value != "admin" and user.UserName != user_id:
+    if user.role.value != "admin" and user.id != user_id:
         raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
     newtime_str = ','.join(times)
     try:
@@ -467,6 +470,51 @@ async def edit_time_sheet(time_sheet_edit: Time_sheet_edit, db: Session = Depend
         update_stmt = update(table).where(table.c.user_id == user_id).where(table.c.date == date).values(
 
             times_edited=newtime_str)
+        db.execute(update_stmt)
+        db.commit()
+
+        return {"detail": "ویرایش با موفقیت انجام شد."}
+
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"خطا در ویرایش داده‌ها: {e}")
+
+
+@app.post("/api/v1/description", tags=['admin'])
+async def Add_Description(description: Desciption, db: Session = Depends(get_db),
+                          token: str = Depends(JWTBearer())):
+    payload = decodeJWT(token)
+
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid token or token expired")
+
+    # جستجوی کاربر در پایگاه داده با استفاده از userID از توکن
+    user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
+    user_description = description.description
+    user_id = description.id
+    date = description.date
+    table_name = description.table_name
+    # بررسی اینکه آیا کاربر یافت شده است یا خیر
+    if user is None:
+        raise HTTPException(status_code=404, detail="کاربر یافت نشد.")
+
+    # دریافت داده‌ها از درخواست
+
+    # بررسی اینکه آیا کاربر ادمین است یا ID کاربر با ID درخواستی مطابقت دارد
+    if user.role.value != "admin" and user.id != user_id:
+        raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
+    try:
+        # بارگذاری متادیتا و دریافت جدول
+        metadata = MetaData()
+        table = Table(table_name, metadata, autoload_with=db.bind)
+        stmt = table.select().where(table.c.user_id == user_id).where(table.c.date == date)
+        result = db.execute(stmt).fetchone()
+
+        if not result:
+            raise HTTPException(status_code=404, detail="ردیف مورد نظر یافت نشد.")
+
+            # بروزرسانی ستون times_edited
+        update_stmt = update(table).where(table.c.user_id == user_id).where(table.c.date == date).values(
+            description=user_description)
         db.execute(update_stmt)
         db.commit()
 

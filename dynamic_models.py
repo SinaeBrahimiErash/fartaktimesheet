@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, validator
 from typing import Optional
 from enum import Enum
 from typing import List
@@ -33,4 +33,13 @@ class Time_sheet_edit(BaseModel):
     id: int
     table_name: str
     date: str
-    newtime: List[str]
+    newtime: List[str] = []
+
+
+
+
+class Desciption(BaseModel):
+    id: int
+    table_name: str
+    date: str
+    description: str
