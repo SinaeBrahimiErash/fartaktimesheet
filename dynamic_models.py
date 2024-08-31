@@ -41,5 +41,5 @@ class Time_sheet_edit(BaseModel):
 class Desciption(BaseModel):
     id: int
     table_name: str
-    date: str
+    date: List[str] = []
     description: str
