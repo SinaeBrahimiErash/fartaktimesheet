@@ -505,28 +505,29 @@ async def Add_Description(description: Desciption, db: Session = Depends(get_db)
     # بررسی اینکه آیا کاربر ادمین است یا ID کاربر با ID درخواستی مطابقت دارد
     if user.role.value != "admin" and user.id != user_id:
         raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
+    print(date)
+    print(type(date))
+
     try:
         # بارگذاری متادیتا و دریافت جدول
         metadata = MetaData()
         table = Table(table_name, metadata, autoload_with=db.bind)
-        stmt = table.select().where(table.c.user_id == user_id).where(table.c.date == date)
-        result = db.execute(stmt).fetchone()
-        if not result:
-            raise HTTPException(status_code=404, detail="ردیف مورد نظر یافت نشد.")
+        for i_data in date:
+            stmt = table.select().where(table.c.user_id == user_id).where(table.c.date == i_data)
 
-        result = result[4]
-        if result:
-            massage = "ویرایش با موفقیت انجام شد."
-        else:
-            massage = "توضیحات با موفقیت ثبت شد."
+            result = db.execute(stmt).fetchone()
+            if not result:
+                raise HTTPException(status_code=404, detail="ردیف مورد نظر یافت نشد.")
 
-            # بروزرسانی ستون times_edited
-        update_stmt = update(table).where(table.c.user_id == user_id).where(table.c.date == date).values(
-            description=user_description)
-        db.execute(update_stmt)
+                # بروزرسانی ستون times_edited
+            update_stmt = update(table).where(table.c.user_id == user_id).where(table.c.date == i_data).values(
+                description=user_description)
+
+            db.execute(update_stmt)
+
         db.commit()
+        return HTTPException(status_code=200, detail="توضیحات با موفقیت ثبت شد.")
 
-        return {"detail": massage}
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"خطا در ویرایش داده‌ها: {e}")
