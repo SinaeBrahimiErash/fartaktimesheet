@@ -9,7 +9,7 @@ import enum
 
 class Role(enum.Enum):
     admin = 'admin'
-    user = 'user',
+    user = 'user'
     supervisor = 'supervisor'
 
 
