@@ -82,7 +82,8 @@ async def fetch_users(db: Session = Depends(get_db), token: str = Depends(JWTBea
             }
             print(user_dict)
             user_list.append(user_dict)
-
+    else:
+        return HTTPException(status_code=403, detail='شما به این عملیات دسترسی ندارید.')
     return user_list
 
 
@@ -199,8 +200,6 @@ async def register_users(users: User, db: Session = Depends(get_db), token: str 
         raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نمیباشید.")
 
     test_id = db.query(models.User).filter(models.User.id == users.id).first()
-
-
 
     if test_id:
         return HTTPException(status_code=400, detail="شناسه کاربر تکراری است .")
