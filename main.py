@@ -43,27 +43,44 @@ async def fetch_users(db: Session = Depends(get_db), token: str = Depends(JWTBea
 
     # جستجوی کاربر در پایگاه داده با استفاده از userID از توکن
     user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
+    users = db.query(models.User.id,
+                     models.User.UserName,
+                     models.User.Name,
+                     models.User.role,
+                     models.User.ParentId).all()
+    supervisor_list = db.query(models.User.id,
+                               models.User.UserName,
+                               models.User.Name,
+                               models.User.role,
+                               models.User.ParentId).filter(models.User.ParentId == user.id).all()
 
     # بررسی اینکه آیا کاربر یافت شده است یا خیر
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
 
     # بررسی نقش کاربر
-    if user.role.value != "admin":
-        raise HTTPException(status_code=403, detail="You do not have permission to perform this action.")
-    users = db.query(models.User.id,
-                     models.User.UserName,
-                     models.User.Name,
-                     models.User.role).all()
-    user_list = []
-    for user in users:
-        user_dict = {
-            "id": user.id,
-            "UserName": user.UserName,
-            "Name": user.Name,
-            "role": user.role.value  # چون نقش به صورت Enum است، مقدار آن را استخراج می‌کنیم
-        }
-        user_list.append(user_dict)
+    if user.role.value == "admin":
+        user_list = []
+        for user in users:
+            user_dict = {
+                "id": user.id,
+                "UserName": user.UserName,
+                "Name": user.Name,
+                "role": user.role.value,  # چون نقش به صورت Enum است، مقدار آن را استخراج می‌کنیم
+                "ParentId": user.ParentId
+            }
+            user_list.append(user_dict)
+    elif user.role.value == "supervisor":
+        user_list = []
+        for supervisor in supervisor_list:
+            user_dict = {
+                "id": supervisor.id,
+                "UserName": supervisor.UserName,
+                "Name": supervisor.Name,
+                "role": supervisor.role.value,  # چون نقش به صورت Enum است، مقدار آن را استخراج می‌کنیم
+                "ParentId": supervisor.ParentId
+            }
+            user_list.append(user_dict)
 
     return user_list
 
@@ -80,8 +97,8 @@ async def profile(token: str = Depends(JWTBearer()), db: Session = Depends(get_d
         "id": user.id,
         "UserName": user.UserName,
         "role": user.role.value,  # چون نقش به صورت Enum است، مقدار آن را استخراج می‌کنیم
-        "Name": user.Name
-
+        "Name": user.Name,
+        'ParentId': user.ParentId
     }
 
     return user_dict
@@ -151,10 +168,12 @@ async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depen
         user_model.password = hash_pass(user_update.password)
     if user_update.role:
         user_model.role = user_update.role
+    if user_update.parentid:
+        user_model.ParentId = user_update.parentid
 
     db.add(user_model)
     db.commit()
-    raise HTTPException(status_code=200, detail='اظلاعات کاربر با موفقیت ویراش شد .')
+    raise HTTPException(status_code=200, detail='اظلاعات کاربر با موفقیت ویرایش شد .')
 
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -179,6 +198,9 @@ async def register_users(users: User, db: Session = Depends(get_db), token: str 
         raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نمیباشید.")
 
     test_id = db.query(models.User).filter(models.User.id == users.id).first()
+    superviser_id = db.query(models.User).filter(models.User.id == users.ParentId).first()
+    if not superviser_id:
+        return HTTPException(status_code=400, detail="شناسه کاربر سوپروایزر یافت نشد.")
 
     if test_id:
         return HTTPException(status_code=400, detail="شناسه کاربر تکراری است .")
@@ -189,6 +211,7 @@ async def register_users(users: User, db: Session = Depends(get_db), token: str 
     user_model.UserName = users.UserName
     user_model.Name = users.Name
     user_model.password = hashed_pass
+    user_model.ParentId = users.ParentId
     user_model.role = users.role
     db.add(user_model)
     db.commit()

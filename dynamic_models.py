@@ -6,7 +6,8 @@ from typing import List
 
 class Role(str, Enum):
     admin = 'admin',
-    user = 'user'
+    user = 'user',
+    supervisor = 'supervisor'
 
 
 class User(BaseModel):
@@ -14,6 +15,7 @@ class User(BaseModel):
     UserName: str
     Name: str
     password: str
+    ParentId: int = None
     role: Role
 
 
@@ -21,6 +23,7 @@ class UserUpdate(BaseModel):
     UserName: Optional[str] = None
     Name: Optional[str] = None
     password: Optional[str] = None
+    parentid: int = None
     role: Optional[str] = None
 
 
@@ -34,8 +37,6 @@ class Time_sheet_edit(BaseModel):
     table_name: str
     date: str
     newtime: List[str] = []
-
-
 
 
 class Desciption(BaseModel):

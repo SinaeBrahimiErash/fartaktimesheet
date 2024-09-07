@@ -9,7 +9,8 @@ import enum
 
 class Role(enum.Enum):
     admin = 'admin'
-    user = 'user'
+    user = 'user',
+    supervisor = 'supervisor'
 
 
 class User(Base):
@@ -19,6 +20,7 @@ class User(Base):
     UserName = Column(String)
     Name = Column(String)
     password = Column(String)
+    ParentId = Column(Integer)
     role = Column(Enum(Role))
 
     class Config:
@@ -26,7 +28,9 @@ class User(Base):
             "username": "admin",
             "name": "admin",
             "password": "123",
-            "role": "admin"
+            "role": "admin",
+
+
         }
 
 
@@ -41,5 +45,3 @@ class UserLogin(BaseModel):
                 "password": "123"
             }
         }
-
-
