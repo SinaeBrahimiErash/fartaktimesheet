@@ -83,7 +83,7 @@ async def fetch_users(db: Session = Depends(get_db), token: str = Depends(JWTBea
             print(user_dict)
             user_list.append(user_dict)
     else:
-        return HTTPException(status_code=403, detail='شما به این عملیات دسترسی ندارید.')
+        raise HTTPException(status_code=403, detail='شما به این عملیات دسترسی ندارید.')
     return user_list
 
 
