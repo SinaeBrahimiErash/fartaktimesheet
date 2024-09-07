@@ -5,8 +5,8 @@ from typing import List
 
 
 class Role(str, Enum):
-    admin = 'admin',
-    user = 'user',
+    admin = 'admin'
+    user = 'user'
     supervisor = 'supervisor'
 
 

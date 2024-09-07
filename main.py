@@ -80,6 +80,7 @@ async def fetch_users(db: Session = Depends(get_db), token: str = Depends(JWTBea
                 "role": supervisor.role.value,  # چون نقش به صورت Enum است، مقدار آن را استخراج می‌کنیم
                 "ParentId": supervisor.ParentId
             }
+            print(user_dict)
             user_list.append(user_dict)
 
     return user_list
@@ -198,9 +199,8 @@ async def register_users(users: User, db: Session = Depends(get_db), token: str 
         raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نمیباشید.")
 
     test_id = db.query(models.User).filter(models.User.id == users.id).first()
-    superviser_id = db.query(models.User).filter(models.User.id == users.ParentId).first()
-    if not superviser_id:
-        return HTTPException(status_code=400, detail="شناسه کاربر سوپروایزر یافت نشد.")
+
+
 
     if test_id:
         return HTTPException(status_code=400, detail="شناسه کاربر تکراری است .")
