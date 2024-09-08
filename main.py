@@ -200,9 +200,11 @@ async def register_users(users: User, db: Session = Depends(get_db), token: str 
         raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نمیباشید.")
 
     test_id = db.query(models.User).filter(models.User.id == users.id).first()
-
+    username = db.query(models.User).filter(models.User.UserName == users.UserName).first()
     if test_id:
         raise HTTPException(status_code=400, detail="شناسه کاربر تکراری است .")
+    if username:
+        raise HTTPException(status_code=400, detail='نام کار بر تکراری است .')
 
     user_model = models.User()
     hashed_pass = hash_pass(users.password)
@@ -424,34 +426,34 @@ async def get_user_data(user_id: int, year_month: str, db: Session = Depends(get
         raise HTTPException(status_code=404, detail="کابر یافت نشد.")
 
     # بررسی نقش کاربر
-    if user.role.value != "admin" and user.id != user_id:
+    if user.role.value == "admin" or user.id == user_id or user.role.value == "supervisor":
+        table_name = year_month
+
+        try:
+            table = get_table_by_name(table_name, db)
+
+        except:
+            return []
+
+            raise HTTPException(status_code=200, detail="اطلاعاتی دریافت نشد .")
+
+        # جستجوی داده‌ها برای user_id مشخص شده
+        date = query_data_from_table(table, user_id, db)
+        if len(date) == 0:
+            raise HTTPException(status_code=404, detail='کاربر یافت نشد .')
+        arry = []
+        for i in date:
+            times_edited = i[5].split(',')
+            times = i[2].split(',')
+            if times_edited == ['']:
+                times_edited = []
+            if times == ['']:
+                times = []
+            arry.append({"id": i[0], "date": i[1], "times": times, "date_type": i[3], 'description': i[4],
+                         'times_edited': times_edited})
+        return arry
+    else:
         raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
-
-    table_name = year_month
-
-    try:
-        table = get_table_by_name(table_name, db)
-
-    except:
-        return []
-
-        raise HTTPException(status_code=200, detail="اطلاعاتی دریافت نشد .")
-
-    # جستجوی داده‌ها برای user_id مشخص شده
-    date = query_data_from_table(table, user_id, db)
-    if len(date) == 0:
-        raise HTTPException(status_code=404, detail='کاربر یافت نشد .')
-    arry = []
-    for i in date:
-        times_edited = i[5].split(',')
-        times = i[2].split(',')
-        if times_edited == ['']:
-            times_edited = []
-        if times == ['']:
-            times = []
-        arry.append({"id": i[0], "date": i[1], "times": times, "date_type": i[3], 'description': i[4],
-                     'times_edited': times_edited})
-    return arry
 
 
 @app.post("/api/v1/edit_time_sheet", tags=["admin"])
