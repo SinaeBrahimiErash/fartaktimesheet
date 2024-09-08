@@ -14,7 +14,7 @@ from auth.jwt_handler import singJWT
 from auth.jwt_bearer import decodeJWT
 import shutil
 import pandas as pd
-from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Time, Table, select, update
+from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Time, Table, select, update, or_
 import io
 from sqlalchemy import func, and_
 from datetime import datetime
@@ -52,7 +52,8 @@ async def fetch_users(db: Session = Depends(get_db), token: str = Depends(JWTBea
                                models.User.UserName,
                                models.User.Name,
                                models.User.role,
-                               models.User.ParentId).filter(models.User.ParentId == user.id).all()
+                               models.User.ParentId).filter(or_(
+        models.User.ParentId == user.id,models.User.id == user.id)).all()
 
     # بررسی اینکه آیا کاربر یافت شده است یا خیر
     if user is None:
@@ -128,8 +129,10 @@ async def delete_user(user_id: int, db: Session = Depends(get_db), token: str = 
     if user_model is None:
         raise HTTPException(status_code=404, detail="کاربر یافت نشد .")
     users_parent_id_is_not_none = db.query(models.User).filter(models.User.ParentId == user_id).first()
+
     if users_parent_id_is_not_none:
         raise HTTPException(status_code=400, detail='سرپرست دارای زیر مجموعه است .')
+
     db.query(models.User).filter(models.User.id == user_id).delete()
     db.commit()
     raise HTTPException(status_code=200, detail='حذف با موفقیت انجام شد .')
@@ -165,16 +168,19 @@ async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depen
 
     if user_model is None:
         raise HTTPException(status_code=404, detail="کابر یافت نشد.")
-    users_parent_id_is_not_none = db.query(models.User).filter(models.User.ParentId == user.id)
-    if users_parent_id_is_not_none:
-        raise HTTPException(status_code=400, detail='سرپرست دارای زیر مجموعه است .')
+
+    # users_parent_id_is_not_none = db.query(models.User).filter(models.User.ParentId == user.id).first()
+    #
+    # if users_parent_id_is_not_none:
+    #     raise HTTPException(status_code=400, detail='سرپرست دارای زیر مجموعه است .')
+
     if user_update.UserName:
         user_model.UserName = user_update.UserName
     if user_update.Name:
         user_model.Name = user_update.Name
     if user_update.password:
         user_model.password = hash_pass(user_update.password)
-    if user_update.role:
+    if user_update.role :
         user_model.role = user_update.role
     if user_update.parentid:
         user_model.ParentId = user_update.parentid
@@ -210,8 +216,9 @@ async def register_users(users: User, db: Session = Depends(get_db), token: str 
     if test_id:
         raise HTTPException(status_code=400, detail="شناسه کاربر تکراری است .")
     if username:
-        raise HTTPException(status_code=400, detail='نام کار بر تکراری است .')
-
+        raise HTTPException(status_code=400, detail='نام کاربری تکراری است .')
+    if users.role.value == "supervisor":
+        users.ParentId = None
     user_model = models.User()
     hashed_pass = hash_pass(users.password)
     user_model.id = users.id
@@ -222,7 +229,7 @@ async def register_users(users: User, db: Session = Depends(get_db), token: str 
     user_model.role = users.role
     db.add(user_model)
     db.commit()
-    raise HTTPException(status_code=200, detail='کار بر مورد نظر با موفقیت ایجاد شد')
+    raise HTTPException(status_code=200, detail='کاربر مورد نظر با موفقیت ایجاد شد')
 
 
 def check_user(data: UserLogin, db: Session):
