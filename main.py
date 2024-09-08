@@ -161,14 +161,15 @@ async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depen
     if user is None:
         raise HTTPException(status_code=404, detail="کابر یافت نشد.")
     user_model = db.query(models.User).filter(models.User.id == user_id).first()
-
+    allusername=db.query(models.User).filter(models.User.UserName == user_update.UserName).first()
     # بررسی نقش کاربر
     if user.role.value != "admin" and user.id != user_id:
         raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
 
     if user_model is None:
         raise HTTPException(status_code=404, detail="کابر یافت نشد.")
-
+    if allusername:
+        raise HTTPException(status_code=400, detail='نام کاربری تکراری است .')
     # users_parent_id_is_not_none = db.query(models.User).filter(models.User.ParentId == user.id).first()
     #
     # if users_parent_id_is_not_none:
