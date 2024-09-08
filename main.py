@@ -129,7 +129,7 @@ async def delete_user(user_id: int, db: Session = Depends(get_db), token: str = 
         raise HTTPException(status_code=404, detail="کاربر یافت نشد .")
     users_parent_id_is_not_none = db.query(models.User).filter(models.User.ParentId == user_id).first()
     if users_parent_id_is_not_none:
-        raise HTTPException(status_code=400, detail='سرپرست داری زیر مجموعه میباشد .')
+        raise HTTPException(status_code=400, detail='سرپرست دارای زیر مجموعه است .')
     db.query(models.User).filter(models.User.id == user_id).delete()
     db.commit()
     raise HTTPException(status_code=200, detail='حذف با موفقیت انجام شد .')
@@ -167,7 +167,7 @@ async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depen
         raise HTTPException(status_code=404, detail="کابر یافت نشد.")
     users_parent_id_is_not_none = db.query(models.User).filter(models.User.ParentId == user.id)
     if users_parent_id_is_not_none:
-        raise HTTPException(status_code=400, detail='سرپرست داری زیر مجموعه میباشد .')
+        raise HTTPException(status_code=400, detail='سرپرست دارای زیر مجموعه است .')
     if user_update.UserName:
         user_model.UserName = user_update.UserName
     if user_update.Name:
