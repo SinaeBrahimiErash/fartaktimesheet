@@ -202,7 +202,7 @@ async def register_users(users: User, db: Session = Depends(get_db), token: str 
     test_id = db.query(models.User).filter(models.User.id == users.id).first()
 
     if test_id:
-        return HTTPException(status_code=400, detail="شناسه کاربر تکراری است .")
+        raise HTTPException(status_code=400, detail="شناسه کاربر تکراری است .")
 
     user_model = models.User()
     hashed_pass = hash_pass(users.password)
