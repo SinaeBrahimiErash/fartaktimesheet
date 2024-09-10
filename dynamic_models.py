@@ -23,7 +23,7 @@ class UserUpdate(BaseModel):
     UserName: Optional[str] = None
     Name: Optional[str] = None
     password: Optional[str] = None
-    parentid: int = None
+    parentid: float | None = None
     role: Optional[str] = None
 
 
@@ -44,3 +44,8 @@ class Desciption(BaseModel):
     table_name: str
     date: List[str] = []
     description: str
+
+
+class UpdateProfile(BaseModel):
+    Name: Optional[str] = None
+    password: Optional[str] = None

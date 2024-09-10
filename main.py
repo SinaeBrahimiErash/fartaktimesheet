@@ -2,7 +2,7 @@ import os
 from sqlalchemy.exc import IntegrityError
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.security import HTTPAuthorizationCredentials
-from dynamic_models import Role, User, UserLogin, UserUpdate, Time_sheet_edit, Desciption
+from dynamic_models import Role, User, UserLogin, UserUpdate, Time_sheet_edit, Desciption, UpdateProfile
 from passlib.context import CryptContext
 from typing import List
 from sqlalchemy.orm import Session
@@ -53,7 +53,7 @@ async def fetch_users(db: Session = Depends(get_db), token: str = Depends(JWTBea
                                models.User.Name,
                                models.User.role,
                                models.User.ParentId).filter(or_(
-        models.User.ParentId == user.id,models.User.id == user.id)).all()
+        models.User.ParentId == user.id, models.User.id == user.id)).all()
 
     # بررسی اینکه آیا کاربر یافت شده است یا خیر
     if user is None:
@@ -95,7 +95,7 @@ async def profile(token: str = Depends(JWTBearer()), db: Session = Depends(get_d
     user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
 
     if user is None:
-        raise HTTPException(status_code=401, detail="user with id  does not exist")
+        raise HTTPException(status_code=401, detail="کابر یافت نشد.")
     user_dict = {
         "id": user.id,
         "UserName": user.UserName,
@@ -149,6 +149,7 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 @app.put("/api/v1/user/{user_id}")
 async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get_db),
                       token: str = Depends(JWTBearer())):
+    print('salam')
     payload = decodeJWT(token)
 
     if not payload:
@@ -156,20 +157,31 @@ async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depen
 
     # جستجوی کاربر در پایگاه داده با استفاده از userID از توکن
     user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
-
+    print(user)
     # بررسی اینکه آیا کاربر یافت شده است یا خیر
     if user is None:
         raise HTTPException(status_code=404, detail="کابر یافت نشد.")
     user_model = db.query(models.User).filter(models.User.id == user_id).first()
-    allusername=db.query(models.User).filter(models.User.UserName == user_update.UserName).first()
+    allusername = db.query(models.User).filter(models.User.UserName == user_update.UserName).first()
+    print('salam-1')
     # بررسی نقش کاربر
-    if user.role.value != "admin" and user.id != user_id:
+
+    if user.role.value != "admin":
         raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
 
     if user_model is None:
         raise HTTPException(status_code=404, detail="کابر یافت نشد.")
+
     if allusername:
         raise HTTPException(status_code=400, detail='نام کاربری تکراری است .')
+
+    if user_model.role.value == "supervisor" and (
+            user_update.role == "user" or user_update.role == "admin"):
+        users_parent_id_is_not_none = db.query(models.User).filter(models.User.ParentId == user_id).first()
+        print('salam3')
+        if users_parent_id_is_not_none:
+            raise HTTPException(status_code=400, detail='سرپرست دارای زیر مجموعه است .')
+        print('salam4')
     # users_parent_id_is_not_none = db.query(models.User).filter(models.User.ParentId == user.id).first()
     #
     # if users_parent_id_is_not_none:
@@ -181,7 +193,7 @@ async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depen
         user_model.Name = user_update.Name
     if user_update.password:
         user_model.password = hash_pass(user_update.password)
-    if user_update.role :
+    if user_update.role:
         user_model.role = user_update.role
     if user_update.parentid:
         user_model.ParentId = user_update.parentid
@@ -220,6 +232,7 @@ async def register_users(users: User, db: Session = Depends(get_db), token: str 
         raise HTTPException(status_code=400, detail='نام کاربری تکراری است .')
     if users.role.value == "supervisor":
         users.ParentId = None
+
     user_model = models.User()
     hashed_pass = hash_pass(users.password)
     user_model.id = users.id
@@ -569,3 +582,41 @@ async def Add_Description(description: Desciption, db: Session = Depends(get_db)
 
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"خطا در ویرایش داده‌ها: {e}")
+
+
+@app.post('/api/v1/user/update_profile', dependencies=[Depends(JWTBearer)], tags=["user"])
+async def update_profile(user_update: UpdateProfile, db: Session = Depends(get_db),
+                         token: str = Depends(JWTBearer())):
+    payload = decodeJWT(token)
+
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid token or token expired")
+
+    # جستجوی کاربر در پایگاه داده با استفاده از userID از توکن
+    user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
+
+    # بررسی اینکه آیا کاربر یافت شده است یا خیر
+    if user is None:
+        raise HTTPException(status_code=404, detail="کابر یافت نشد.")
+    user_model = db.query(models.User).filter(models.User.id == user.id).first()
+    allusername = db.query(models.User).filter(models.User.UserName == user_update.UserName).first()
+    print('salam-1')
+
+    # if user.id != user_id:
+    #     raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
+
+    if user_model is None:
+        raise HTTPException(status_code=404, detail="کابر یافت نشد.")
+    #
+    if allusername:
+        raise HTTPException(status_code=400, detail='نام کاربری تکراری است .')
+
+
+    if user_update.Name:
+        user_model.Name = user_update.Name
+    if user_update.password:
+        user_model.password = hash_pass(user_update.password)
+
+    db.add(user_model)
+    db.commit()
+    raise HTTPException(status_code=200, detail='اظلاعات کاربر با موفقیت ویرایش شد .')
