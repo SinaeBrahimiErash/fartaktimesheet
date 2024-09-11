@@ -688,7 +688,7 @@ async def get_login_history(db: Session = Depends(get_db), token: str = Depends(
     formatted_history = []
     for record in login_history:
         formatted_history.append({
-            "id": record.id,
+            "userid": record.user_id,
             "username": record.username,
             "start_time": unix_to_readable(record.login_time),
             "end_time": unix_to_readable(record.logout_time)
