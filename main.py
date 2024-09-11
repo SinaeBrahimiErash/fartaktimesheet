@@ -467,7 +467,7 @@ async def get_user_data(user_id: int, year_month: str, db: Session = Depends(get
         # جستجوی داده‌ها برای user_id مشخص شده
         date = query_data_from_table(table, user_id, db)
         if len(date) == 0:
-            raise HTTPException(status_code=404, detail='کاربر یافت نشد .')
+            raise HTTPException(status_code=404, detail='کاربر یافت نشد.')
         arry = []
         for i in date:
             times_edited = i[5].split(',')
@@ -609,7 +609,7 @@ async def update_profile(user_update: UpdateProfile, db: Session = Depends(get_d
         raise HTTPException(status_code=404, detail="کابر یافت نشد.")
     #
     if allusername:
-        raise HTTPException(status_code=400, detail='نام کاربری تکراری است .')
+        raise HTTPException(status_code=400, detail='نام کاربری تکراری است.')
 
 
     if user_update.Name:
@@ -619,4 +619,4 @@ async def update_profile(user_update: UpdateProfile, db: Session = Depends(get_d
 
     db.add(user_model)
     db.commit()
-    raise HTTPException(status_code=200, detail='اظلاعات کاربر با موفقیت ویرایش شد .')
+    raise HTTPException(status_code=200, detail='اظلاعات کاربر با موفقیت ویرایش شد.')
