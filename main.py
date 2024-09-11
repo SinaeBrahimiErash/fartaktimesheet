@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from enum import Enum
 from auth.jwt_bearer import JWTBearer
 import models
-
+from models import UserLoginHistory
 from database import SessionLocal, engine
 from auth.jwt_handler import singJWT
 from auth.jwt_bearer import decodeJWT
@@ -19,6 +19,7 @@ from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, 
 import io
 from sqlalchemy import func, and_
 from datetime import datetime
+import time
 
 import aiofiles
 from persiantools.jdatetime import JalaliDate
@@ -259,7 +260,25 @@ def check_user(data: UserLogin, db: Session):
 @app.post("/api/v1/user/login")
 async def user_login(user: UserLogin, db: Session = Depends(get_db)):
     if check_user(user, db):
-        return singJWT(user.username)
+        token_response = singJWT(user.username)
+
+        # استخراج زمان لاگین از payload توکن
+        token_payload = decodeJWT(token_response["access_token"])
+        login_time = token_payload["login_time"]
+
+        # دریافت اطلاعات کاربر
+        db_user = db.query(models.User).filter(models.User.UserName == user.username).first()
+
+        # ثبت زمان لاگین در دیتابیس
+        login_history = UserLoginHistory(
+            user_id=db_user.id,
+            username=user.username,
+            login_time=login_time
+        )
+        db.add(login_history)
+        db.commit()
+
+        return token_response
     else:
         raise HTTPException(status_code=400, detail="نام کاربری یا رمز عبور اشتباه است .")
 
@@ -601,12 +620,8 @@ async def update_profile(user_update: UpdateProfile, db: Session = Depends(get_d
         raise HTTPException(status_code=404, detail="کابر یافت نشد.")
     user_model = db.query(models.User).filter(models.User.id == user.id).first()
 
-
     if user_model is None:
         raise HTTPException(status_code=404, detail="کابر یافت نشد.")
-    #
-
-
 
     if user_update.Name:
         user_model.Name = user_update.Name
@@ -616,41 +631,67 @@ async def update_profile(user_update: UpdateProfile, db: Session = Depends(get_d
     db.add(user_model)
     db.commit()
     raise HTTPException(status_code=200, detail='اظلاعات کاربر با موفقیت ویرایش شد.')
-# def log_user_session(db: Session, user_id: int, username: str):
-#     session_log = UserSessionLog(
-#         user_id=user_id,
-#         username=username,
-#         start_time=datetime.utcnow()
-#     )
-#     db.add(session_log)
-#     db.commit()
-#     db.refresh(session_log)
-#     return session_log
 
 
-# def update_user_logout(db: Session, user_id: int):
-#     session_log = db.query(UserSessionLog).filter(UserSessionLog.user_id == user_id).order_by(
-#         UserSessionLog.start_time.desc()).first()
-#
-#     if session_log:
-#         session_log.end_time = datetime.utcnow()
-#         db.commit()
-#         db.refresh(session_log)
+@app.post("/api/v1/user/logout")
+async def user_logout(token: str = Depends(JWTBearer()), db: Session = Depends(get_db)):
+    # توکن را بررسی و payload را استخراج کنید
+    payload = decodeJWT(token)
+
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid token or token expired")
+
+    # نام کاربری را از توکن استخراج کنید
+    username = payload["username"]
+
+    # جستجوی کاربر در جدول UserLoginHistory که لاگین کرده است
+    user_login_history = db.query(UserLoginHistory).filter(
+        UserLoginHistory.username == username
+    ).order_by(UserLoginHistory.login_time.desc()).first()
+
+    # بررسی اینکه آیا رکوردی برای این کاربر وجود دارد یا خیر
+    if user_login_history is None or user_login_history.logout_time is not None:
+        raise HTTPException(status_code=404, detail="کاربر در حال حاضر لاگین نیست یا قبلاً لاگ‌اوت شده است.")
+
+    # به‌روزرسانی زمان لاگ‌اوت
+    user_login_history.logout_time = time.time()  # زمان فعلی
+
+    # ذخیره تغییرات در دیتابیس
+    db.commit()
+
+    return {"detail": "کاربر با موفقیت لاگ‌اوت شد."}
 
 
-# @app.post("/api/v1/logout")
-# async def logout_user(token: str = Depends(JWTBearer()), db: Session = Depends(get_db)):
-#     payload = decodeJWT(token)
-#
-#     if not payload:
-#         raise HTTPException(status_code=401, detail="Invalid token or token expired")
-#
-#     user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
-#
-#     if user is None:
-#         raise HTTPException(status_code=404, detail="User not found")
-#
-#     # به‌روزرسانی زمان لاگ‌اوت
-#     update_user_logout(db, user.id)
-#
-#     return {"detail": "User successfully logged out"}
+# def unix_to_readable(unix_timestamp):
+#     return datetime.fromtimestamp(unix_timestamp).strftime('%Y-%m-%d %H:%M:%S')
+def unix_to_readable(unix_timestamp):
+    if unix_timestamp is None:
+        return None  # یا می‌توانید یک مقدار پیش‌فرض دیگر مانند 'N/A' استفاده کنید
+    return datetime.fromtimestamp(unix_timestamp).strftime('%Y-%m-%d %H:%M:%S')
+
+
+@app.get("/api/v1/admin/login-history", tags=["admin"])
+async def get_login_history(db: Session = Depends(get_db), token: str = Depends(JWTBearer())):
+    payload = decodeJWT(token)
+
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid token or token expired")
+
+    # جستجوی کاربر در پایگاه داده برای بررسی اینکه کاربر ادمین است
+    user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
+
+    if user.role.value != "admin":
+        raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
+    login_history = db.query(UserLoginHistory).all()
+
+    # تبدیل زمان‌ها از یونیکس به فرمت قابل نمایش
+    formatted_history = []
+    for record in login_history:
+        formatted_history.append({
+            "id": record.id,
+            "username": record.username,
+            "start_time": unix_to_readable(record.login_time),
+            "end_time": unix_to_readable(record.logout_time)
+        })
+
+    return formatted_history
