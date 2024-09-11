@@ -5,6 +5,7 @@ from typing import List, Optional, ClassVar
 from sqlalchemy import Column, String, Integer, Enum, DateTime, TIME
 from database import Base
 import enum
+from datetime import datetime
 
 
 class Role(enum.Enum):
@@ -30,7 +31,6 @@ class User(Base):
             "password": "123",
             "role": "admin",
 
-
         }
 
 
@@ -45,3 +45,12 @@ class UserLogin(BaseModel):
                 "password": "123"
             }
         }
+
+
+# class UserSessionLog(Base):
+#     __tablename__ = "user_session_log"
+#     id = Column(Integer, primary_key=True, index=True)
+#     user_id = Column(Integer, nullable=False)
+#     username = Column(String, nullable=False)
+#     start_time = Column(DateTime, default=datetime.utcnow)
+#     end_time = Column(DateTime, nullable=True)

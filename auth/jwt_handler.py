@@ -3,6 +3,9 @@ import time
 import jwt
 from decouple import config
 
+import models
+from sqlalchemy.orm import Session
+
 JWT_SECRET = config("secret")
 JWT_ALGORITHM = config("algorithm")
 
@@ -13,12 +16,13 @@ def token_response(token: str):
     }
 
 
-def singJWT(username: str):
+def singJWT(username: str, db: Session):
     payload = {
         "username": username,
         "expiry": time.time() + 86400
     }
     token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
     return token_response(token)
 
 
