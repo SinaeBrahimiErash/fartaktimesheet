@@ -16,7 +16,7 @@ def token_response(token: str):
     }
 
 
-def singJWT(username: str, db: Session):
+def singJWT(username: str):
     payload = {
         "username": username,
         "expiry": time.time() + 86400
