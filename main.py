@@ -602,15 +602,10 @@ async def update_profile(user_update: UpdateProfile, db: Session = Depends(get_d
     user_model = db.query(models.User).filter(models.User.id == user.id).first()
 
 
-
-    # if user.id != user_id:
-    #     raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
-
     if user_model is None:
         raise HTTPException(status_code=404, detail="کابر یافت نشد.")
     #
-    if allusername:
-        raise HTTPException(status_code=400, detail='نام کاربری تکراری است.')
+
 
 
     if user_update.Name:
@@ -621,41 +616,41 @@ async def update_profile(user_update: UpdateProfile, db: Session = Depends(get_d
     db.add(user_model)
     db.commit()
     raise HTTPException(status_code=200, detail='اظلاعات کاربر با موفقیت ویرایش شد.')
-def log_user_session(db: Session, user_id: int, username: str):
-    session_log = UserSessionLog(
-        user_id=user_id,
-        username=username,
-        start_time=datetime.utcnow()
-    )
-    db.add(session_log)
-    db.commit()
-    db.refresh(session_log)
-    return session_log
+# def log_user_session(db: Session, user_id: int, username: str):
+#     session_log = UserSessionLog(
+#         user_id=user_id,
+#         username=username,
+#         start_time=datetime.utcnow()
+#     )
+#     db.add(session_log)
+#     db.commit()
+#     db.refresh(session_log)
+#     return session_log
 
 
-def update_user_logout(db: Session, user_id: int):
-    session_log = db.query(UserSessionLog).filter(UserSessionLog.user_id == user_id).order_by(
-        UserSessionLog.start_time.desc()).first()
+# def update_user_logout(db: Session, user_id: int):
+#     session_log = db.query(UserSessionLog).filter(UserSessionLog.user_id == user_id).order_by(
+#         UserSessionLog.start_time.desc()).first()
+#
+#     if session_log:
+#         session_log.end_time = datetime.utcnow()
+#         db.commit()
+#         db.refresh(session_log)
 
-    if session_log:
-        session_log.end_time = datetime.utcnow()
-        db.commit()
-        db.refresh(session_log)
 
-
-@app.post("/api/v1/logout")
-async def logout_user(token: str = Depends(JWTBearer()), db: Session = Depends(get_db)):
-    payload = decodeJWT(token)
-
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid token or token expired")
-
-    user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
-
-    if user is None:
-        raise HTTPException(status_code=404, detail="User not found")
-
-    # به‌روزرسانی زمان لاگ‌اوت
-    update_user_logout(db, user.id)
-
-    return {"detail": "User successfully logged out"}
+# @app.post("/api/v1/logout")
+# async def logout_user(token: str = Depends(JWTBearer()), db: Session = Depends(get_db)):
+#     payload = decodeJWT(token)
+#
+#     if not payload:
+#         raise HTTPException(status_code=401, detail="Invalid token or token expired")
+#
+#     user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
+#
+#     if user is None:
+#         raise HTTPException(status_code=404, detail="User not found")
+#
+#     # به‌روزرسانی زمان لاگ‌اوت
+#     update_user_logout(db, user.id)
+#
+#     return {"detail": "User successfully logged out"}
