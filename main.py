@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from enum import Enum
 from auth.jwt_bearer import JWTBearer
 import models
-from models import UserSessionLog
+
 from database import SessionLocal, engine
 from auth.jwt_handler import singJWT
 from auth.jwt_bearer import decodeJWT
