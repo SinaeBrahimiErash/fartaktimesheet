@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 from enum import Enum
 from auth.jwt_bearer import JWTBearer
 import models
+from models import UserSessionLog
 from database import SessionLocal, engine
 from auth.jwt_handler import singJWT
 from auth.jwt_bearer import decodeJWT
@@ -255,7 +256,7 @@ def check_user(data: UserLogin, db: Session):
         return False
 
 
-@app.post("/api/v1/user/login", tags=["user"])
+@app.post("/api/v1/user/login")
 async def user_login(user: UserLogin, db: Session = Depends(get_db)):
     if check_user(user, db):
         return singJWT(user.username)
@@ -599,8 +600,8 @@ async def update_profile(user_update: UpdateProfile, db: Session = Depends(get_d
     if user is None:
         raise HTTPException(status_code=404, detail="کابر یافت نشد.")
     user_model = db.query(models.User).filter(models.User.id == user.id).first()
-    allusername = db.query(models.User).filter(models.User.UserName == user_update.UserName).first()
-    print('salam-1')
+
+
 
     # if user.id != user_id:
     #     raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
@@ -620,3 +621,41 @@ async def update_profile(user_update: UpdateProfile, db: Session = Depends(get_d
     db.add(user_model)
     db.commit()
     raise HTTPException(status_code=200, detail='اظلاعات کاربر با موفقیت ویرایش شد.')
+def log_user_session(db: Session, user_id: int, username: str):
+    session_log = UserSessionLog(
+        user_id=user_id,
+        username=username,
+        start_time=datetime.utcnow()
+    )
+    db.add(session_log)
+    db.commit()
+    db.refresh(session_log)
+    return session_log
+
+
+def update_user_logout(db: Session, user_id: int):
+    session_log = db.query(UserSessionLog).filter(UserSessionLog.user_id == user_id).order_by(
+        UserSessionLog.start_time.desc()).first()
+
+    if session_log:
+        session_log.end_time = datetime.utcnow()
+        db.commit()
+        db.refresh(session_log)
+
+
+@app.post("/api/v1/logout")
+async def logout_user(token: str = Depends(JWTBearer()), db: Session = Depends(get_db)):
+    payload = decodeJWT(token)
+
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid token or token expired")
+
+    user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
+
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # به‌روزرسانی زمان لاگ‌اوت
+    update_user_logout(db, user.id)
+
+    return {"detail": "User successfully logged out"}
