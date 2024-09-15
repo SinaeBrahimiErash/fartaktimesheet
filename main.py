@@ -464,7 +464,7 @@ async def get_user_data(user_id: int, year_month: str, db: Session = Depends(get
             table = get_table_by_name(table_name, db)
 
         except:
-            return []
+            return {"Data": [], "Status": {"status": ""}}
 
             raise HTTPException(status_code=200, detail="اطلاعاتی دریافت نشد .")
 
@@ -703,7 +703,7 @@ async def time_sheet_status(accept: Time_Sheet_Status, db: Session = Depends(get
         db.execute(update_stmt)
 
         db.commit()
-        return HTTPException(status_code=200, detail="تایید با موفقیت ثبت شد.")
+        return HTTPException(status_code=200, detail="تاییدیه با موفقیت ثبت شد.")
 
     else:
         raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
