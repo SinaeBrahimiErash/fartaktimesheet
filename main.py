@@ -464,7 +464,7 @@ async def get_user_data(user_id: int, year_month: str, db: Session = Depends(get
             table = get_table_by_name(table_name, db)
 
         except:
-            return {"Data": [], "Status": {"status": ""}}
+            return {"data": [], "status": {"status": ""}}
 
             raise HTTPException(status_code=200, detail="اطلاعاتی دریافت نشد .")
 
