@@ -49,3 +49,9 @@ class Desciption(BaseModel):
 class UpdateProfile(BaseModel):
     Name: Optional[str] = None
     password: Optional[str] = None
+
+
+class Time_Sheet_Status(BaseModel):
+    id: int
+    table_name: str
+    status: bool

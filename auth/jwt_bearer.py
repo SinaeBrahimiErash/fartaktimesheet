@@ -14,19 +14,25 @@ class JWTBearer(HTTPBearer):
         if credentials:
             if not credentials.scheme == "Bearer":
                 raise HTTPException(status_code=401, detail="Invalid authentication scheme.")
-            if not self.verify_jwt(credentials.credentials):
-                raise HTTPException(status_code=401, detail="توکن شما منقضی شده است. لطفا دوباره وارد شوید.")
-            return credentials.credentials
+            payload = decodeJWT(credentials.credentials)
+            if payload and isinstance(payload, dict):
+                if not self.verify_jwt(credentials.credentials):
+                    raise HTTPException(status_code=401, detail="توکن شما منقضی شده است. لطفا دوباره وارد شوید.")
+                return credentials.credentials
+            else:
+                raise HTTPException(status_code=401, detail="Invalid token or expired token.")
         else:
             raise HTTPException(status_code=401, detail="Invalid authorization code.")
 
-    def verify_jwt(self, jwtoken: str) -> bool:
-        isTokenValid: bool = False
+    def has_role(self, payload: dict, role: str) -> bool:
+        if isinstance(payload, dict):
+            return payload.get('role') == role
+        return False
 
+    def verify_jwt(self, jwtoken: str) -> bool:
         try:
             payload = decodeJWT(jwtoken)
-        except:
-            payload = None
-        if payload:
-            isTokenValid = True
-        return isTokenValid
+            return isinstance(payload, dict)
+        except Exception as e:
+            print(f"Error verifying JWT: {e}")
+            return False

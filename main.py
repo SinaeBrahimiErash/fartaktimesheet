@@ -2,7 +2,8 @@ import os
 from sqlalchemy.exc import IntegrityError
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.security import HTTPAuthorizationCredentials
-from dynamic_models import Role, User, UserLogin, UserUpdate, Time_sheet_edit, Desciption, UpdateProfile
+from dynamic_models import Role, User, UserLogin, UserUpdate, Time_sheet_edit, Desciption, UpdateProfile, \
+    Time_Sheet_Status
 from passlib.context import CryptContext
 from typing import List
 from sqlalchemy.orm import Session
@@ -15,7 +16,8 @@ from auth.jwt_handler import singJWT
 from auth.jwt_bearer import decodeJWT
 import shutil
 import pandas as pd
-from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Time, Table, select, update, or_
+from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Time, Table, select, update, or_, \
+    Boolean
 import io
 from sqlalchemy import func, and_
 from datetime import datetime
@@ -184,10 +186,6 @@ async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depen
         if users_parent_id_is_not_none:
             raise HTTPException(status_code=400, detail='سرپرست دارای زیر مجموعه است .')
         print('salam4')
-    # users_parent_id_is_not_none = db.query(models.User).filter(models.User.ParentId == user.id).first()
-    #
-    # if users_parent_id_is_not_none:
-    #     raise HTTPException(status_code=400, detail='سرپرست دارای زیر مجموعه است .')
 
     if user_update.UserName:
         user_model.UserName = user_update.UserName
@@ -211,41 +209,30 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 @app.post('/api/v1/user/register', dependencies=[Depends(JWTBearer)], tags=["user"])
 async def register_users(users: User, db: Session = Depends(get_db), token: str = Depends(JWTBearer())):
     payload = decodeJWT(token)
+    if JWTBearer().has_role(payload, "admin"):
 
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid token or token expired")
+        test_id = db.query(models.User).filter(models.User.id == users.id).first()
+        username = db.query(models.User).filter(models.User.UserName == users.UserName).first()
+        if test_id:
+            raise HTTPException(status_code=400, detail="شناسه کاربر تکراری است .")
+        if username:
+            raise HTTPException(status_code=400, detail='نام کاربری تکراری است .')
+        if users.role.value == "supervisor":
+            users.ParentId = None
 
-    # جستجوی کاربر در پایگاه داده با استفاده از userID از توکن
-    user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
-
-    # بررسی اینکه آیا کاربر یافت شده است یا خیر
-    if user is None:
-        raise HTTPException(status_code=404, detail="کابر یافت نشد.")
-
-    # بررسی نقش کاربر
-    if user.role.value != "admin":
+        user_model = models.User()
+        hashed_pass = hash_pass(users.password)
+        user_model.id = users.id
+        user_model.UserName = users.UserName
+        user_model.Name = users.Name
+        user_model.password = hashed_pass
+        user_model.ParentId = users.ParentId
+        user_model.role = users.role
+        db.add(user_model)
+        db.commit()
+        raise HTTPException(status_code=200, detail='کاربر مورد نظر با موفقیت ایجاد شد')
+    else:
         raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نمیباشید.")
-
-    test_id = db.query(models.User).filter(models.User.id == users.id).first()
-    username = db.query(models.User).filter(models.User.UserName == users.UserName).first()
-    if test_id:
-        raise HTTPException(status_code=400, detail="شناسه کاربر تکراری است .")
-    if username:
-        raise HTTPException(status_code=400, detail='نام کاربری تکراری است .')
-    if users.role.value == "supervisor":
-        users.ParentId = None
-
-    user_model = models.User()
-    hashed_pass = hash_pass(users.password)
-    user_model.id = users.id
-    user_model.UserName = users.UserName
-    user_model.Name = users.Name
-    user_model.password = hashed_pass
-    user_model.ParentId = users.ParentId
-    user_model.role = users.role
-    db.add(user_model)
-    db.commit()
-    raise HTTPException(status_code=200, detail='کاربر مورد نظر با موفقیت ایجاد شد')
 
 
 def check_user(data: UserLogin, db: Session):
@@ -260,15 +247,12 @@ def check_user(data: UserLogin, db: Session):
 @app.post("/api/v1/user/login")
 async def user_login(user: UserLogin, db: Session = Depends(get_db)):
     if check_user(user, db):
-        token_response = singJWT(user.username)
+        db_user = db.query(models.User).filter(models.User.UserName == user.username).first()
+        token_response = singJWT(user.username, db_user.role.value)
 
         # استخراج زمان لاگین از payload توکن
         token_payload = decodeJWT(token_response["access_token"])
         login_time = token_payload["login_time"]
-
-        # دریافت اطلاعات کاربر
-        db_user = db.query(models.User).filter(models.User.UserName == user.username).first()
-
         # ثبت زمان لاگین در دیتابیس
         login_history = UserLoginHistory(
             user_id=db_user.id,
@@ -339,6 +323,7 @@ async def read_and_process_excel(file: UploadFile):
         for date in date_range_jalali:
             description = ""
             times_edited = ""
+            time_sheet_status = 0
             if date in user_data['date'].values:
                 time = user_data[user_data['date'] == date]['time'].values[0]
                 day_type = "0"
@@ -364,6 +349,7 @@ async def read_and_process_excel(file: UploadFile):
                 'day_type': day_type,
                 'description': description,
                 'times_edited': times_edited,
+                'time_sheet_status': time_sheet_status
             })
 
     # تبدیل لیست نهایی به DataFrame
@@ -375,63 +361,61 @@ async def read_and_process_excel(file: UploadFile):
 
 @app.post("/api/v1/upload_excel", tags=["admin"])
 async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_db), token: str = Depends(JWTBearer())):
-    # توکن را از JWTBearer دریافت کنید
     payload = decodeJWT(token)
+    if JWTBearer().has_role(payload, "admin"):
 
-    if not payload:
-        raise HTTPException(status_code=401, detail="Invalid token or token expired")
+        # جستجوی کاربر در پایگاه داده با استفاده از userID از توکن
+        user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
 
-    # جستجوی کاربر در پایگاه داده با استفاده از userID از توکن
-    user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
+        if user is None:
+            raise HTTPException(status_code=404, detail="کابر یافت نشد.")
 
-    # بررسی اینکه آیا کاربر یافت شده است یا خیر
-    if user is None:
-        raise HTTPException(status_code=404, detail="کابر یافت نشد.")
+        try:
+            df_grouped = await read_and_process_excel(file)
 
-    # بررسی نقش کاربر
-    if user.role.value != "admin":
-        raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
-    try:
-        df_grouped = await read_and_process_excel(file)
+            # 2. درج داده‌های پردازش‌شده در دیتابیس
+            table_name = os.path.splitext(file.filename)[0]
 
-        # 2. درج داده‌های پردازش‌شده در دیتابیس
-        table_name = os.path.splitext(file.filename)[0]
+            metadata = MetaData()
+            table = Table(
+                table_name, metadata,
+                Column('user_id', String),
+                Column('date', String),
+                Column('times', String),
+                Column('day_type', String),
+                Column('description', String),
+                Column('times_edited', String),
+                Column('time_sheet_status', Boolean)
+            )
 
-        metadata = MetaData()
-        table = Table(
-            table_name, metadata,
-            Column('user_id', String),
-            Column('date', String),
-            Column('times', String),
-            Column('day_type', String),
-            Column('description', String),
-            Column('times_edited', String)
-        )
+            metadata.create_all(bind=db.bind)
 
-        metadata.create_all(bind=db.bind)
+            for index, row in df_grouped.iterrows():
 
-        for index, row in df_grouped.iterrows():
+                try:
 
-            try:
+                    insert_stmt = table.insert().values(
+                        user_id=row['id'],
+                        date=row['date'],
+                        times=row['time'],
+                        day_type=row['day_type'],
+                        description=row['description'],
+                        times_edited=row['times_edited'],
+                        time_sheet_status=row['time_sheet_status']
+                    )
+                    db.execute(insert_stmt)
+                except Exception as e:
+                    print(f"Failed to insert row {index}: {e} ,Data: {row}")
 
-                insert_stmt = table.insert().values(
-                    user_id=row['id'],
-                    date=row['date'],
-                    times=row['time'],
-                    day_type=row['day_type'],
-                    description=row['description'],
-                    times_edited=row['times_edited']
-                )
-                db.execute(insert_stmt)
-            except Exception as e:
-                print(f"Failed to insert row {index}: {e} ,Data: {row}")
+            db.commit()
 
-        db.commit()
+            return HTTPException(status_code=200, detail="فایل با موفقیت آپلود شد .")
 
-        return HTTPException(status_code=200, detail="فایل با موفقیت آپلود شد .")
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f'فرمت فایل نا معتبر است: {e}')
 
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f'فرمت فایل نا معتبر است: {e}')
+    else:
+        raise HTTPException(status_code=403, detail='شما قادر به انجام این عملیات نیستید.')
 
 
 def get_table_by_name(table_name: str, db):
@@ -488,6 +472,7 @@ async def get_user_data(user_id: int, year_month: str, db: Session = Depends(get
         date = query_data_from_table(table, user_id, db)
         if len(date) == 0:
             raise HTTPException(status_code=404, detail='کاربر یافت نشد.')
+        status = {"status": date[0][6]}
         arry = []
         for i in date:
             times_edited = i[5].split(',')
@@ -498,7 +483,8 @@ async def get_user_data(user_id: int, year_month: str, db: Session = Depends(get
                 times = []
             arry.append({"id": i[0], "date": i[1], "times": times, "date_type": i[3], 'description': i[4],
                          'times_edited': times_edited})
-        return arry
+
+        return {"data": arry, "status": status}
     else:
         raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
 
@@ -576,8 +562,6 @@ async def Add_Description(description: Desciption, db: Session = Depends(get_db)
     # بررسی اینکه آیا کاربر ادمین است یا ID کاربر با ID درخواستی مطابقت دارد
     if user.role.value != "admin" and user.id != user_id:
         raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
-    print(date)
-    print(type(date))
 
     try:
         # بارگذاری متادیتا و دریافت جدول
@@ -695,3 +679,31 @@ async def get_login_history(db: Session = Depends(get_db), token: str = Depends(
         })
 
     return formatted_history
+
+
+@app.post("/api/v1/time_sheet_status", tags=["admin"])
+async def time_sheet_status(accept: Time_Sheet_Status, db: Session = Depends(get_db),
+                            token: str = Depends(JWTBearer())):
+    payload = decodeJWT(token)
+    if not payload:
+        raise HTTPException(status_code=403, detail="Invalid token or token expired")
+
+    user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
+
+    if user.role.value == "admin" or user.role.value == "supervisor":
+        user_id = accept.id
+        table_name = accept.table_name
+        # status = accept.status
+
+        metadata = MetaData()
+        table = Table(table_name, metadata, autoload_with=db.bind)
+        update_stmt = update(table).where(table.c.user_id == user_id).values(
+            time_sheet_status=accept.status)
+        print(update_stmt)
+        db.execute(update_stmt)
+
+        db.commit()
+        return HTTPException(status_code=200, detail="تایید با موفقیت ثبت شد.")
+
+    else:
+        raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
