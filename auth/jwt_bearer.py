@@ -20,9 +20,9 @@ class JWTBearer(HTTPBearer):
                     raise HTTPException(status_code=401, detail="توکن شما منقضی شده است. لطفا دوباره وارد شوید.")
                 return credentials.credentials
             else:
-                raise HTTPException(status_code=401, detail="Invalid token or expired token.")
+                raise HTTPException(status_code=401, detail="توکن شما منقضی شده است. لطفا دوباره وارد شوید.")
         else:
-            raise HTTPException(status_code=401, detail="Invalid authorization code.")
+            raise HTTPException(status_code=401, detail="توکن شما منقضی شده است. لطفا دوباره وارد شوید.")
 
     def has_role(self, payload: dict, role: str) -> bool:
         if isinstance(payload, dict):
