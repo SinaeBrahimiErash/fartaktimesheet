@@ -55,3 +55,8 @@ class Time_Sheet_Status(BaseModel):
     id: int
     table_name: str
     status: bool
+
+
+class total_presence(BaseModel):
+    id: int
+    table_name: str

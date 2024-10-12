@@ -25,6 +25,14 @@ def singJWT(username: str, role: str):
     return token_response(token)
 
 
+def generate_reset_token(username: str):
+    payload = {
+        "username": username,
+        "expiry": time.time() + 86400
+    }
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
+
 def decodeJWT(token: str):
     try:
         decode_token = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])

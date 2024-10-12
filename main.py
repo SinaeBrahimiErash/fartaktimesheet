@@ -3,7 +3,8 @@ from sqlalchemy.exc import IntegrityError
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.security import HTTPAuthorizationCredentials
 from dynamic_models import Role, User, UserLogin, UserUpdate, Time_sheet_edit, Desciption, UpdateProfile, \
-    Time_Sheet_Status
+    total_presence, Time_Sheet_Status
+
 from passlib.context import CryptContext
 from typing import List
 from sqlalchemy.orm import Session
@@ -12,17 +13,19 @@ from auth.jwt_bearer import JWTBearer
 import models
 from models import UserLoginHistory
 from database import SessionLocal, engine
-from auth.jwt_handler import singJWT
+from auth.jwt_handler import singJWT, generate_reset_token
 from auth.jwt_bearer import decodeJWT
 import shutil
 import pandas as pd
-from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Time, Table, select, update, or_, \
+from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Time, Table, select, update, or_, case, \
     Boolean
+
 import io
 from sqlalchemy import func, and_
-from datetime import datetime
+import calculate_timesheet
+from datetime import datetime, timedelta
 import time
-
+from sendemail import send_reset_email
 import aiofiles
 from persiantools.jdatetime import JalaliDate
 import jdatetime
@@ -47,17 +50,6 @@ async def fetch_users(db: Session = Depends(get_db), token: str = Depends(JWTBea
 
     # جستجوی کاربر در پایگاه داده با استفاده از userID از توکن
     user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
-    users = db.query(models.User.id,
-                     models.User.UserName,
-                     models.User.Name,
-                     models.User.role,
-                     models.User.ParentId).all()
-    supervisor_list = db.query(models.User.id,
-                               models.User.UserName,
-                               models.User.Name,
-                               models.User.role,
-                               models.User.ParentId).filter(or_(
-        models.User.ParentId == user.id, models.User.id == user.id)).all()
 
     # بررسی اینکه آیا کاربر یافت شده است یا خیر
     if user is None:
@@ -65,6 +57,11 @@ async def fetch_users(db: Session = Depends(get_db), token: str = Depends(JWTBea
 
     # بررسی نقش کاربر
     if user.role.value == "admin":
+        users = db.query(models.User.id,
+                         models.User.UserName,
+                         models.User.Name,
+                         models.User.role,
+                         models.User.ParentId).all()
         user_list = []
         for user in users:
             user_dict = {
@@ -76,6 +73,12 @@ async def fetch_users(db: Session = Depends(get_db), token: str = Depends(JWTBea
             }
             user_list.append(user_dict)
     elif user.role.value == "supervisor":
+        supervisor_list = db.query(models.User.id,
+                                   models.User.UserName,
+                                   models.User.Name,
+                                   models.User.role,
+                                   models.User.ParentId).filter(or_(
+            models.User.ParentId == user.id, models.User.id == user.id)).all()
         user_list = []
         for supervisor in supervisor_list:
             user_dict = {
@@ -85,7 +88,7 @@ async def fetch_users(db: Session = Depends(get_db), token: str = Depends(JWTBea
                 "role": supervisor.role.value,  # چون نقش به صورت Enum است، مقدار آن را استخراج می‌کنیم
                 "ParentId": supervisor.ParentId
             }
-            print(user_dict)
+
             user_list.append(user_dict)
     else:
         raise HTTPException(status_code=403, detail='شما به این عملیات دسترسی ندارید.')
@@ -153,7 +156,6 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
 @app.put("/api/v1/user/{user_id}")
 async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depends(get_db),
                       token: str = Depends(JWTBearer())):
-    print('salam')
     payload = decodeJWT(token)
 
     if not payload:
@@ -161,13 +163,13 @@ async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depen
 
     # جستجوی کاربر در پایگاه داده با استفاده از userID از توکن
     user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
-    print(user)
+
     # بررسی اینکه آیا کاربر یافت شده است یا خیر
     if user is None:
         raise HTTPException(status_code=404, detail="کابر یافت نشد.")
     user_model = db.query(models.User).filter(models.User.id == user_id).first()
     allusername = db.query(models.User).filter(models.User.UserName == user_update.UserName).first()
-    print('salam-1')
+
     # بررسی نقش کاربر
 
     if user.role.value != "admin":
@@ -182,10 +184,9 @@ async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depen
     if user_model.role.value == "supervisor" and (
             user_update.role == "user" or user_update.role == "admin"):
         users_parent_id_is_not_none = db.query(models.User).filter(models.User.ParentId == user_id).first()
-        print('salam3')
+
         if users_parent_id_is_not_none:
             raise HTTPException(status_code=400, detail='سرپرست دارای زیر مجموعه است .')
-        print('salam4')
 
     if user_update.UserName:
         user_model.UserName = user_update.UserName
@@ -323,9 +324,14 @@ async def read_and_process_excel(file: UploadFile):
         for date in date_range_jalali:
             description = ""
             times_edited = ""
+            final_times = ""
+            total_presence = ""
             time_sheet_status = 0
             if date in user_data['date'].values:
                 time = user_data[user_data['date'] == date]['time'].values[0]
+                times = time.split(',')
+                times = [t[:5] if len(t) > 5 else t for t in times]
+                time = ','.join(times)
                 day_type = "0"
 
             else:
@@ -349,7 +355,9 @@ async def read_and_process_excel(file: UploadFile):
                 'day_type': day_type,
                 'description': description,
                 'times_edited': times_edited,
-                'time_sheet_status': time_sheet_status
+                'time_sheet_status': time_sheet_status,
+                'final_times': final_times,
+                'total_presence': total_presence
             })
 
     # تبدیل لیست نهایی به DataFrame
@@ -385,7 +393,9 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
                 Column('day_type', String),
                 Column('description', String),
                 Column('times_edited', String),
-                Column('time_sheet_status', Boolean)
+                Column('time_sheet_status', Boolean),
+                Column('final_times', String),
+                Column('total_presence', String)
             )
 
             metadata.create_all(bind=db.bind)
@@ -401,7 +411,9 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
                         day_type=row['day_type'],
                         description=row['description'],
                         times_edited=row['times_edited'],
-                        time_sheet_status=row['time_sheet_status']
+                        time_sheet_status=row['time_sheet_status'],
+                        final_times=row['final_times'],
+                        total_presence=row['total_presence']
                     )
                     db.execute(insert_stmt)
                 except Exception as e:
@@ -430,7 +442,7 @@ def get_table_by_name(table_name: str, db):
 
         return table
     else:
-        print(f"Table {table_name} not found")  # برای اشکال‌زدایی
+
         raise ValueError(f"Table {table_name} not found")
 
 
@@ -464,10 +476,47 @@ async def get_user_data(user_id: int, year_month: str, db: Session = Depends(get
             table = get_table_by_name(table_name, db)
 
         except:
-            return {"data": [], "status": {"status": ""}}
+            # return HTTPException(status_code=404, detail="جدول یافت نشد .")
 
             raise HTTPException(status_code=200, detail="اطلاعاتی دریافت نشد .")
+        update_final_times = (
+            update(table)
+            .where(table.c.user_id == user_id)  # شرط برای فیلتر کردن ردیف با id = 101
+            .values(
+                final_times=case(
+                    (table.c.times_edited != "", table.c.times_edited),
+                    # شرط 2: اگر times_edited خالی بود ولی times خالی نبود، از times استفاده کن
+                    (table.c.times != "", table.c.times),
+                    # شرط 3: اگر هر دو خالی بودند، مقدار "00:00" را درج کن
+                    else_="00:00"
+                )
+            )
+        )
+        db.execute(update_final_times)
+        db.commit()
+        select_stmt = select(table.c.user_id, table.c.date, table.c.final_times).where(table.c.user_id == user_id)
+        result = db.execute(select_stmt)
+        rows = result.fetchall()
 
+        for row in rows:
+            user_id = row[0]  # شناسه کاربر
+            date = row[1]  # ستون تاریخ
+            times = row[2]
+            if row:
+                times = row[2]  # ستون times را دریافت کن
+
+                # گام 2: پردازش مقدار ستون times
+                total_presence = calculate_timesheet.calculate_total_presence(times)
+
+                # گام 3: آپدیت مقدار total_presence
+                update_stmt = (
+                    update(table)
+                    .where(and_(table.c.date == date, table.c.user_id == user_id))
+                    .values(total_presence=total_presence)
+                )
+
+                db.execute(update_stmt)
+                db.commit()
         # جستجوی داده‌ها برای user_id مشخص شده
         date = query_data_from_table(table, user_id, db)
         if len(date) == 0:
@@ -482,7 +531,7 @@ async def get_user_data(user_id: int, year_month: str, db: Session = Depends(get
             if times == ['']:
                 times = []
             arry.append({"id": i[0], "date": i[1], "times": times, "date_type": i[3], 'description': i[4],
-                         'times_edited': times_edited})
+                         'times_edited': times_edited, 'final_times': i[7], 'total_presence': i[8]})
 
         return {"data": arry, "status": status}
     else:
@@ -646,8 +695,6 @@ async def user_logout(token: str = Depends(JWTBearer()), db: Session = Depends(g
     return {"detail": "کاربر با موفقیت لاگ‌اوت شد."}
 
 
-# def unix_to_readable(unix_timestamp):
-#     return datetime.fromtimestamp(unix_timestamp).strftime('%Y-%m-%d %H:%M:%S')
 def unix_to_readable(unix_timestamp):
     if unix_timestamp is None:
         return None  # یا می‌توانید یک مقدار پیش‌فرض دیگر مانند 'N/A' استفاده کنید
@@ -693,17 +740,91 @@ async def time_sheet_status(accept: Time_Sheet_Status, db: Session = Depends(get
     if user.role.value == "admin" or user.role.value == "supervisor":
         user_id = accept.id
         table_name = accept.table_name
-        # status = accept.status
-
         metadata = MetaData()
         table = Table(table_name, metadata, autoload_with=db.bind)
-        update_stmt = update(table).where(table.c.user_id == user_id).values(
-            time_sheet_status=accept.status)
-        print(update_stmt)
-        db.execute(update_stmt)
 
+        update_status_stmt = update(table).where(table.c.user_id == user_id).values(
+            time_sheet_status=accept.status
+        )
+        db.execute(update_status_stmt)
         db.commit()
+
+        # ذخی
         return HTTPException(status_code=200, detail="تاییدیه با موفقیت ثبت شد.")
 
     else:
         raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
+
+
+@app.post("/api/v1/user/forgot_password", tags=["admin"])
+async def forgot_password(email: str, db: Session = Depends(get_db)):
+    user = db.query(models.User).filter(models.User.email == email).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="ایمیل یافت نشد.")
+    reset_token = generate_reset_token(user.UserName)
+    send_reset_email(email, reset_token)
+    return {"message": "Password reset link has been sent to your email."}
+
+
+@app.post("/api/v1/user/reset-password", tags=["admin"])
+def reset_password(token: str, new_password: str, db: Session = Depends(get_db)):
+    # بررسی اعتبار توکن
+    payload = decodeJWT(token)
+
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid token or token expired")
+
+    # یافتن کاربر و تغییر رمز عبور
+
+    user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
+
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # هش کردن رمز عبور جدید
+    user.password = hash_pass(new_password)
+    db.commit()
+
+    return {"message": "Password has been reset successfully."}
+
+
+@app.post("/api/v1/user/total_presence", tags=["admin"])
+async def total_presence(date: total_presence, db: Session = Depends(get_db),
+                         token: str = Depends(JWTBearer())):
+    payload = decodeJWT(token)
+    if not payload:
+        raise HTTPException(status_code=403, detail="Invalid token or token expired")
+
+    user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
+
+    if user.role.value == "admin" or user.role.value == "supervisor":
+        user_id = date.id
+        table_name = date.table_name
+        metadata = MetaData()
+        table = Table(table_name, metadata, autoload_with=db.bind)
+        total_sum_stmt = select(
+            func.sum(
+                case(
+                    (table.c.day_type == 1, table.c.total_presence * 1.5),  # شرط اول
+                    else_=table.c.total_presence  # سایر موارد
+                )
+            ).label('total_sum')  # مجموع را برچسب بزن
+        ).where(table.c.user_id == user_id)
+        print(db.execute(total_sum_stmt).fetchall())
+        result = db.execute(total_sum_stmt).fetchone()
+        total_sum = result[0]
+        print(total_sum)
+        select_stmt = select(
+            case(
+                (table.c.day_type == 1, table.c.total_presence * 1.5),  # شرط اول
+                else_=table.c.total_presence  # سایر موارد
+            ).label('presence_value')  # مقادیر را برچسب بزن
+        ).where(table.c.user_id == user_id)
+
+        # اجرای پرس و جو برای چاپ مقادیر
+        result = db.execute(select_stmt).fetchall()
+
+        # چاپ مقادیر که در جمع استفاده می‌شوند
+        presence_values = [row[0] for row in result]
+        print("Presence values being summed:", presence_values)
+        return HTTPException(status_code=200, detail=total_sum)
