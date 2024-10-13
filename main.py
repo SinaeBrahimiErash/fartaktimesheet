@@ -498,6 +498,12 @@ async def get_user_data(user_id: int, year_month: str, db: Session = Depends(get
         result = db.execute(select_stmt)
         rows = result.fetchall()
 
+        def convert_time_to_hours_and_minutes(time_str):
+            # تقسیم رشته بر اساس ":" و گرفتن ساعت و دقیقه
+            hours, minutes, _ = time_str.split(':')
+            # برگرداندن ساعت و دقیقه به صورت "hh:mm"
+            return f"{hours}:{minutes}"
+
         for row in rows:
             user_id = row[0]  # شناسه کاربر
             date = row[1]  # ستون تاریخ
@@ -530,8 +536,9 @@ async def get_user_data(user_id: int, year_month: str, db: Session = Depends(get
                 times_edited = []
             if times == ['']:
                 times = []
+            times_in_h_and_m = convert_time_to_hours_and_minutes(i[8])
             arry.append({"id": i[0], "date": i[1], "times": times, "date_type": i[3], 'description': i[4],
-                         'times_edited': times_edited, 'final_times': i[7], 'total_presence': i[8]})
+                         'times_edited': times_edited, 'final_times': i[7], 'total_presence': times_in_h_and_m})
 
         return {"data": arry, "status": status}
     else:
@@ -789,8 +796,7 @@ def reset_password(token: str, new_password: str, db: Session = Depends(get_db))
 
 
 @app.post("/api/v1/user/total_presence", tags=["admin"])
-async def total_presence(date: total_presence, db: Session = Depends(get_db),
-                         token: str = Depends(JWTBearer())):
+async def total_presence(date: total_presence, db: Session = Depends(get_db), token: str = Depends(JWTBearer())):
     payload = decodeJWT(token)
     if not payload:
         raise HTTPException(status_code=403, detail="Invalid token or token expired")
@@ -802,29 +808,61 @@ async def total_presence(date: total_presence, db: Session = Depends(get_db),
         table_name = date.table_name
         metadata = MetaData()
         table = Table(table_name, metadata, autoload_with=db.bind)
-        total_sum_stmt = select(
-            func.sum(
-                case(
-                    (table.c.day_type == 1, table.c.total_presence * 1.5),  # شرط اول
-                    else_=table.c.total_presence  # سایر موارد
-                )
-            ).label('total_sum')  # مجموع را برچسب بزن
-        ).where(table.c.user_id == user_id)
-        print(db.execute(total_sum_stmt).fetchall())
-        result = db.execute(total_sum_stmt).fetchone()
-        total_sum = result[0]
-        print(total_sum)
-        select_stmt = select(
-            case(
-                (table.c.day_type == 1, table.c.total_presence * 1.5),  # شرط اول
-                else_=table.c.total_presence  # سایر موارد
-            ).label('presence_value')  # مقادیر را برچسب بزن
-        ).where(table.c.user_id == user_id)
 
-        # اجرای پرس و جو برای چاپ مقادیر
-        result = db.execute(select_stmt).fetchall()
+        # کوئری برای دریافت مقدار total_presence و در نظر گرفتن 1.5 برای روزهای تعطیل (day_type == 1)
+        presence_values_query = select(
+            table.c.day_type,  # day_type را هم انتخاب می‌کنیم
+            table.c.total_presence
+        ).where(
+            table.c.user_id == user_id  # شرط برای user_id مشخص
+        )
 
-        # چاپ مقادیر که در جمع استفاده می‌شوند
-        presence_values = [row[0] for row in result]
-        print("Presence values being summed:", presence_values)
-        return HTTPException(status_code=200, detail=total_sum)
+        # اجرای کوئری برای دریافت تمام مقادیر
+        result = db.execute(presence_values_query).fetchall()
+
+        # استخراج مقادیر total_presence و day_type
+        def time_str_to_timedelta(time_str):
+            hours, minutes, seconds = map(int, time_str.split(':'))
+            return timedelta(hours=hours, minutes=minutes, seconds=seconds)
+
+        # متغیر برای جمع زدن کل زمان
+        total_time = timedelta()
+
+        def time_str_to_timedelta1(time_str):
+            hours, minutes = map(int, time_str.split(':'))
+            return timedelta(hours=hours, minutes=minutes)
+
+        # متغیر برای جمع زدن کل زمان
+        total_time1 = timedelta()
+
+        # حلقه برای پردازش هر تاپل و اعمال ضرب 1.5 در صورت نیاز
+        for day_type, time_str in result:
+            time_delta = time_str_to_timedelta(time_str)
+
+            if day_type == '1':  # اگر day_type برابر با 1 باشد
+                time_delta *= 1.5  # مقدار زمان را 1.5 برابر کن
+
+            total_time += time_delta  # جمع زدن زمان به مجموع
+        # محاسبه ساعت و دقیقه نهایی از total_time
+        total_seconds = total_time.total_seconds()
+        total_hours = int(total_seconds // 3600)
+        total_minutes = int((total_seconds % 3600) // 60)
+
+        # نمایش نتیجه نهایی
+        formatted_time = f"{total_hours:02}:{total_minutes:02}"
+
+        total_time_str1 = '153:00'
+        total_time1 = time_str_to_timedelta1(total_time_str1)
+        deduction_time1 = time_str_to_timedelta1(formatted_time)
+        print(total_time1)
+        print(deduction_time1)
+        final_time1 = total_time1 - deduction_time1
+        # تبدیل نتیجه به ساعت و دقیقه
+        total_seconds1 = final_time1.total_seconds()
+        hours1 = int(total_seconds1 // 3600)
+        minutes1 = int((total_seconds1 % 3600) // 60)
+
+        # نمایش نتیجه نهایی
+        work_deficit = f"{hours1:02}:{minutes1:02}"
+        return HTTPException(status_code=200, detail={"total_presence": formatted_time,
+                                                      "work_deficit": work_deficit})
