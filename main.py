@@ -854,15 +854,18 @@ async def total_presence(date: total_presence, db: Session = Depends(get_db), to
         total_time_str1 = '153:00'
         total_time1 = time_str_to_timedelta1(total_time_str1)
         deduction_time1 = time_str_to_timedelta1(formatted_time)
-        print(total_time1)
-        print(deduction_time1)
+
         final_time1 = total_time1 - deduction_time1
+
         # تبدیل نتیجه به ساعت و دقیقه
         total_seconds1 = final_time1.total_seconds()
+        print(total_seconds1)
         hours1 = int(total_seconds1 // 3600)
-        minutes1 = int((total_seconds1 % 3600) // 60)
+        minet = int((total_seconds1 // 3600)//60)
+        minutes1 = int(total_seconds1 // 60)
 
         # نمایش نتیجه نهایی
-        work_deficit = f"{hours1:02}:{minutes1:02}"
+        work_deficit = f"{hours1:02}:{minet:02}"
+
         return HTTPException(status_code=200, detail={"total_presence": formatted_time,
-                                                      "work_deficit": work_deficit})
+                                                      "work_deficit": minutes1})
