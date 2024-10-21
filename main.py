@@ -417,7 +417,7 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
                     )
                     db.execute(insert_stmt)
                 except Exception as e:
-                    print(f"Failed to insert row {index}: {e} ,Data: {row}")
+                    return (f"Failed to insert row {index}: {e} ,Data: {row}")
 
             db.commit()
 
@@ -855,11 +855,11 @@ async def total_presence(date: total_presence, db: Session = Depends(get_db), to
         total_time1 = time_str_to_timedelta1(total_time_str1)
         deduction_time1 = time_str_to_timedelta1(formatted_time)
 
-        final_time1 = total_time1 - deduction_time1
+        final_time1 = deduction_time1 -total_time1
 
         # تبدیل نتیجه به ساعت و دقیقه
         total_seconds1 = final_time1.total_seconds()
-        print(total_seconds1)
+
         hours1 = int(total_seconds1 // 3600)
         minet = int((total_seconds1 // 3600)//60)
         minutes1 = int(total_seconds1 // 60)
