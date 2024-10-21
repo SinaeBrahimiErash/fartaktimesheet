@@ -690,8 +690,8 @@ async def user_logout(token: str = Depends(JWTBearer()), db: Session = Depends(g
     ).order_by(UserLoginHistory.login_time.desc()).first()
 
     # بررسی اینکه آیا رکوردی برای این کاربر وجود دارد یا خیر
-    # if user_login_history is None or user_login_history.logout_time is not None:
-    #     raise HTTPException(status_code=404, detail="کاربر در حال حاضر لاگین نیست یا قبلاً لاگ‌اوت شده است.")
+    if user_login_history is None or user_login_history.logout_time is not None:
+        raise HTTPException(status_code=200, detail="کاربر در حال حاضر لاگین نیست یا قبلاً لاگ‌اوت شده است.")
 
     # به‌روزرسانی زمان لاگ‌اوت
     user_login_history.logout_time = time.time()  # زمان فعلی
