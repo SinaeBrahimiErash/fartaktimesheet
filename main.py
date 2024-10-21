@@ -805,67 +805,70 @@ async def total_presence(date: total_presence, db: Session = Depends(get_db), to
 
     if user.role.value == "admin" or user.role.value == "supervisor":
         user_id = date.id
-        table_name = date.table_name
-        metadata = MetaData()
-        table = Table(table_name, metadata, autoload_with=db.bind)
+    else:
+        user_id = user.id
 
-        # کوئری برای دریافت مقدار total_presence و در نظر گرفتن 1.5 برای روزهای تعطیل (day_type == 1)
-        presence_values_query = select(
-            table.c.day_type,  # day_type را هم انتخاب می‌کنیم
-            table.c.total_presence
-        ).where(
-            table.c.user_id == user_id  # شرط برای user_id مشخص
-        )
+    table_name = date.table_name
+    metadata = MetaData()
+    table = Table(table_name, metadata, autoload_with=db.bind)
 
-        # اجرای کوئری برای دریافت تمام مقادیر
-        result = db.execute(presence_values_query).fetchall()
+    # کوئری برای دریافت مقدار total_presence و در نظر گرفتن 1.5 برای روزهای تعطیل (day_type == 1)
+    presence_values_query = select(
+        table.c.day_type,  # day_type را هم انتخاب می‌کنیم
+        table.c.total_presence
+    ).where(
+        table.c.user_id == user_id  # شرط برای user_id مشخص
+    )
 
-        # استخراج مقادیر total_presence و day_type
-        def time_str_to_timedelta(time_str):
-            hours, minutes, seconds = map(int, time_str.split(':'))
-            return timedelta(hours=hours, minutes=minutes, seconds=seconds)
+    # اجرای کوئری برای دریافت تمام مقادیر
+    result = db.execute(presence_values_query).fetchall()
 
-        # متغیر برای جمع زدن کل زمان
-        total_time = timedelta()
+    # استخراج مقادیر total_presence و day_type
+    def time_str_to_timedelta(time_str):
+        hours, minutes, seconds = map(int, time_str.split(':'))
+        return timedelta(hours=hours, minutes=minutes, seconds=seconds)
 
-        def time_str_to_timedelta1(time_str):
-            hours, minutes = map(int, time_str.split(':'))
-            return timedelta(hours=hours, minutes=minutes)
+    # متغیر برای جمع زدن کل زمان
+    total_time = timedelta()
 
-        # متغیر برای جمع زدن کل زمان
-        total_time1 = timedelta()
+    def time_str_to_timedelta1(time_str):
+        hours, minutes = map(int, time_str.split(':'))
+        return timedelta(hours=hours, minutes=minutes)
 
-        # حلقه برای پردازش هر تاپل و اعمال ضرب 1.5 در صورت نیاز
-        for day_type, time_str in result:
-            time_delta = time_str_to_timedelta(time_str)
+    # متغیر برای جمع زدن کل زمان
+    total_time1 = timedelta()
 
-            if day_type == '1':  # اگر day_type برابر با 1 باشد
-                time_delta *= 1.5  # مقدار زمان را 1.5 برابر کن
+    # حلقه برای پردازش هر تاپل و اعمال ضرب 1.5 در صورت نیاز
+    for day_type, time_str in result:
+        time_delta = time_str_to_timedelta(time_str)
 
-            total_time += time_delta  # جمع زدن زمان به مجموع
-        # محاسبه ساعت و دقیقه نهایی از total_time
-        total_seconds = total_time.total_seconds()
-        total_hours = int(total_seconds // 3600)
-        total_minutes = int((total_seconds % 3600) // 60)
+        if day_type == '1':  # اگر day_type برابر با 1 باشد
+            time_delta *= 1.5  # مقدار زمان را 1.5 برابر کن
 
-        # نمایش نتیجه نهایی
-        formatted_time = f"{total_hours:02}:{total_minutes:02}"
+        total_time += time_delta  # جمع زدن زمان به مجموع
+    # محاسبه ساعت و دقیقه نهایی از total_time
+    total_seconds = total_time.total_seconds()
+    total_hours = int(total_seconds // 3600)
+    total_minutes = int((total_seconds % 3600) // 60)
 
-        total_time_str1 = '153:00'
-        total_time1 = time_str_to_timedelta1(total_time_str1)
-        deduction_time1 = time_str_to_timedelta1(formatted_time)
+    # نمایش نتیجه نهایی
+    formatted_time = f"{total_hours:02}:{total_minutes:02}"
 
-        final_time1 = deduction_time1 -total_time1
+    total_time_str1 = '153:00'
+    total_time1 = time_str_to_timedelta1(total_time_str1)
+    deduction_time1 = time_str_to_timedelta1(formatted_time)
 
-        # تبدیل نتیجه به ساعت و دقیقه
-        total_seconds1 = final_time1.total_seconds()
+    final_time1 = deduction_time1 - total_time1
 
-        hours1 = int(total_seconds1 // 3600)
-        minet = int((total_seconds1 // 3600)//60)
-        minutes1 = int(total_seconds1 // 60)
+    # تبدیل نتیجه به ساعت و دقیقه
+    total_seconds1 = final_time1.total_seconds()
 
-        # نمایش نتیجه نهایی
-        work_deficit = f"{hours1:02}:{minet:02}"
+    hours1 = int(total_seconds1 // 3600)
+    minet = int((total_seconds1 // 3600) // 60)
+    minutes1 = int(total_seconds1 // 60)
 
-        return HTTPException(status_code=200, detail={"total_presence": formatted_time,
-                                                      "work_deficit": minutes1})
+    # نمایش نتیجه نهایی
+    work_deficit = f"{hours1:02}:{minet:02}"
+
+    return HTTPException(status_code=200, detail={"total_presence": formatted_time,
+                                                  "work_deficit": minutes1})
