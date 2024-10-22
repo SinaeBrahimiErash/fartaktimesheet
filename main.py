@@ -18,8 +18,7 @@ from auth.jwt_bearer import decodeJWT
 import shutil
 import pandas as pd
 from sqlalchemy import create_engine, MetaData, Table, Column, Integer, String, Time, Table, select, update, or_, case, \
-    Boolean
-
+    Boolean, inspect
 import io
 from sqlalchemy import func, and_
 import calculate_timesheet
@@ -56,7 +55,7 @@ async def fetch_users(db: Session = Depends(get_db), token: str = Depends(JWTBea
         raise HTTPException(status_code=404, detail="User not found")
 
     # بررسی نقش کاربر
-    if user.role.value == "admin"or user.role.value == "accountant":
+    if user.role.value == "admin" or user.role.value == "accountant":
         users = db.query(models.User.id,
                          models.User.UserName,
                          models.User.Name,
@@ -469,7 +468,7 @@ async def get_user_data(user_id: int, year_month: str, db: Session = Depends(get
         raise HTTPException(status_code=404, detail="کابر یافت نشد.")
 
     # بررسی نقش کاربر
-    if user.role.value == "admin" or user.id == user_id or user.role.value == "supervisor"or user.role.value == "accountant":
+    if user.role.value == "admin" or user.id == user_id or user.role.value == "supervisor" or user.role.value == "accountant":
         table_name = year_month
 
         try:
@@ -886,8 +885,6 @@ def calculate_total_presence_and_work_deficit(user_id, table_name, db):
     )
     result = db.execute(presence_values_query).fetchall()
 
-
-
     def time_str_to_timedelta(time_str):
 
         hours, minutes, seconds = map(int, time_str.split(':'))
@@ -932,11 +929,17 @@ async def accountant(tablename: accountant_role, db: Session = Depends(get_db), 
     user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
 
     if user.role.value == "accountant":
+
         table_name = tablename.table_name
+        inspector = inspect(db.bind)
+
+        # بررسی وجود جدول
+        if table_name not in inspector.get_table_names():
+            raise HTTPException(status_code=404, detail="اطلاعاتی یافت نشد .")
         metadata = MetaData()
+
         table = Table(table_name, metadata, autoload_with=db.bind)
 
-        print("sa")
         users = db.query(models.User.id,
                          models.User.UserName,
                          models.User.Name,
@@ -952,9 +955,12 @@ async def accountant(tablename: accountant_role, db: Session = Depends(get_db), 
                 "id": user.id,
                 "UserName": user.UserName,
                 "Name": user.Name,
+                "ParentId": user.ParentId,
                 "total_presence": total_presence,
                 "work_deficit": work_deficit
             }
             user_list.append(user_dict)
 
         return user_list
+    else:
+        return HTTPException(status_code=403 ,detail="شما  قادر به انجام این عملیات نیستین .")
