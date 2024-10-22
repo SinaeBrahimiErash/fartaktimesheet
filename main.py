@@ -3,7 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.security import HTTPAuthorizationCredentials
 from dynamic_models import Role, User, UserLogin, UserUpdate, Time_sheet_edit, Desciption, UpdateProfile, \
-    total_presence, Time_Sheet_Status
+    total_presence, Time_Sheet_Status, accountant_role
 
 from passlib.context import CryptContext
 from typing import List
@@ -478,7 +478,7 @@ async def get_user_data(user_id: int, year_month: str, db: Session = Depends(get
         except:
             # return HTTPException(status_code=404, detail="جدول یافت نشد .")
 
-            raise HTTPException(status_code=200, detail="اطلاعاتی دریافت نشد .")
+            raise HTTPException(status_code=404, detail="اطلاعاتی دریافت نشد .")
         update_final_times = (
             update(table)
             .where(table.c.user_id == user_id)  # شرط برای فیلتر کردن ردیف با id = 101
@@ -872,3 +872,89 @@ async def total_presence(date: total_presence, db: Session = Depends(get_db), to
 
     return HTTPException(status_code=200, detail={"total_presence": formatted_time,
                                                   "work_deficit": minutes1})
+
+
+def calculate_total_presence_and_work_deficit(user_id, table_name, db):
+    metadata = MetaData()
+    table = Table(table_name, metadata, autoload_with=db.bind)
+
+    presence_values_query = select(
+        table.c.day_type,
+        table.c.total_presence
+    ).where(
+        table.c.user_id == user_id
+    )
+    result = db.execute(presence_values_query).fetchall()
+
+
+
+    def time_str_to_timedelta(time_str):
+
+        hours, minutes, seconds = map(int, time_str.split(':'))
+        return timedelta(hours=hours, minutes=minutes, seconds=seconds)
+
+    total_time = timedelta()
+
+    for day_type, time_str in result:
+        time_delta = time_str_to_timedelta(time_str)
+        if day_type == '1':
+            time_delta *= 1.5
+        total_time += time_delta
+
+    total_seconds = total_time.total_seconds()
+    total_hours = int(total_seconds // 3600)
+    total_minutes = int((total_seconds % 3600) // 60)
+    formatted_time = f"{total_hours:02}:{total_minutes:02}"
+
+    # برای مثال: مقایسه با '153:00' به عنوان زمان استاندارد
+    total_time_str1 = '153:00'
+    hours1, minutes1 = map(int, total_time_str1.split(':'))
+    total_time1 = timedelta(hours=hours1, minutes=minutes1)
+
+    deduction_time1 = timedelta(hours=total_hours, minutes=total_minutes)
+    final_time1 = deduction_time1 - total_time1
+
+    total_seconds1 = final_time1.total_seconds()
+    hours1 = int(total_seconds1 // 3600)
+    # minutes1 = int((total_seconds1 % 3600) // 60)
+    minutes1 = int(total_seconds1 // 60)
+    # work_deficit = f"{hours1:02}:{minutes1:02}"
+
+    return formatted_time, minutes1
+
+
+@app.post("/api/v1/user/accountant-role")
+async def accountant(tablename: accountant_role, db: Session = Depends(get_db), token: str = Depends(JWTBearer())):
+    payload = decodeJWT(token)
+    if not payload:
+        raise HTTPException(status_code=403, detail="Invalid token or token expired")
+
+    user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
+
+    if user.role.value == "accountant":
+        table_name = tablename.table_name
+        metadata = MetaData()
+        table = Table(table_name, metadata, autoload_with=db.bind)
+
+        print("sa")
+        users = db.query(models.User.id,
+                         models.User.UserName,
+                         models.User.Name,
+                         models.User.role,
+                         models.User.ParentId).join(
+            table,  # نام جدول زمان شیت را در اینجا وارد کنید
+            models.User.id == table.c.user_id
+        ).filter(table.c.time_sheet_status == 1).distinct().all()
+        user_list = []
+        for user in users:
+            total_presence, work_deficit = calculate_total_presence_and_work_deficit(user.id, table_name, db)
+            user_dict = {
+                "id": user.id,
+                "UserName": user.UserName,
+                "Name": user.Name,
+                "total_presence": total_presence,
+                "work_deficit": work_deficit
+            }
+            user_list.append(user_dict)
+
+        return user_list

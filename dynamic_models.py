@@ -8,6 +8,7 @@ class Role(str, Enum):
     admin = 'admin'
     user = 'user'
     supervisor = 'supervisor'
+    accountant = 'accountant'
 
 
 class User(BaseModel):
@@ -59,4 +60,8 @@ class Time_Sheet_Status(BaseModel):
 
 class total_presence(BaseModel):
     id: int
+    table_name: str
+
+
+class accountant_role(BaseModel):
     table_name: str

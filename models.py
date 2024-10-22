@@ -12,6 +12,7 @@ class Role(enum.Enum):
     admin = 'admin'
     user = 'user'
     supervisor = 'supervisor'
+    accountant = 'accountant'
 
 
 class User(Base):
