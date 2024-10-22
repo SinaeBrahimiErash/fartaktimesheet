@@ -56,7 +56,7 @@ async def fetch_users(db: Session = Depends(get_db), token: str = Depends(JWTBea
         raise HTTPException(status_code=404, detail="User not found")
 
     # بررسی نقش کاربر
-    if user.role.value == "admin":
+    if user.role.value == "admin"or user.role.value == "accountant":
         users = db.query(models.User.id,
                          models.User.UserName,
                          models.User.Name,
@@ -469,7 +469,7 @@ async def get_user_data(user_id: int, year_month: str, db: Session = Depends(get
         raise HTTPException(status_code=404, detail="کابر یافت نشد.")
 
     # بررسی نقش کاربر
-    if user.role.value == "admin" or user.id == user_id or user.role.value == "supervisor":
+    if user.role.value == "admin" or user.id == user_id or user.role.value == "supervisor"or user.role.value == "accountant":
         table_name = year_month
 
         try:
@@ -803,7 +803,7 @@ async def total_presence(date: total_presence, db: Session = Depends(get_db), to
 
     user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
 
-    if user.role.value == "admin" or user.role.value == "supervisor":
+    if user.role.value == "admin" or user.role.value == "supervisor" or user.role.value == "accountant":
         user_id = date.id
     else:
         user_id = user.id
