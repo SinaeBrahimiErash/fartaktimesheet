@@ -167,7 +167,7 @@ async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depen
     if user is None:
         raise HTTPException(status_code=404, detail="کابر یافت نشد.")
     user_model = db.query(models.User).filter(models.User.id == user_id).first()
-    allusername = db.query(models.User).filter(models.User.UserName == user_update.UserName).first()
+    # allusername = db.query(models.User).filter(models.User.UserName == user_update.UserName).first()
 
     # بررسی نقش کاربر
 
@@ -177,8 +177,8 @@ async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depen
     if user_model is None:
         raise HTTPException(status_code=404, detail="کابر یافت نشد.")
 
-    if allusername:
-        raise HTTPException(status_code=400, detail='نام کاربری تکراری است .')
+    # if allusername:
+    #     raise HTTPException(status_code=400, detail='نام کاربری تکراری است .')
 
     if user_model.role.value == "supervisor" and (
             user_update.role == "user" or user_update.role == "admin"):
@@ -187,16 +187,16 @@ async def update_user(user_id: int, user_update: UserUpdate, db: Session = Depen
         if users_parent_id_is_not_none:
             raise HTTPException(status_code=400, detail='سرپرست دارای زیر مجموعه است .')
 
-    if user_update.UserName:
-        user_model.UserName = user_update.UserName
+    # if user_update.UserName:
+    #     user_model.UserName = user_update.UserName
     if user_update.Name:
         user_model.Name = user_update.Name
     if user_update.password:
         user_model.password = hash_pass(user_update.password)
     if user_update.role:
         user_model.role = user_update.role
-    if user_update.parentid:
-        user_model.ParentId = user_update.parentid
+    if user_update.ParentId:
+        user_model.ParentId = user_update.ParentId
 
     db.add(user_model)
     db.commit()
@@ -282,7 +282,7 @@ async def read_and_process_excel(file: UploadFile):
 
     # استفاده از محتوای خوانده شده برای پردازش اکسل
     buffer = io.BytesIO(content)  # ایجاد یک buffer از محتوای فایل
-    df = pd.read_excel(buffer)  # تبدیل محتوای buffer به DataFrame
+    df = pd.read_excel(buffer)  # تّبدیل محتوای buffer به DataFrame
 
     df = df.iloc[:, :3]  # انتخاب سه ستون اول
     df.columns = ['id', 'date', 'time']
