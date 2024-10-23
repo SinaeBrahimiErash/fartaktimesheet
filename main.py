@@ -71,7 +71,7 @@ async def fetch_users(db: Session = Depends(get_db), token: str = Depends(JWTBea
                 "ParentId": user.ParentId
             }
             user_list.append(user_dict)
-    elif user.role.value == "supervisor":
+    elif user.role.value == "supervisor" or user.role.value == "user":
         supervisor_list = db.query(models.User.id,
                                    models.User.UserName,
                                    models.User.Name,
@@ -742,24 +742,25 @@ async def time_sheet_status(accept: Time_Sheet_Status, db: Session = Depends(get
         raise HTTPException(status_code=403, detail="Invalid token or token expired")
 
     user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
+    targetuser = db.query(models.User).filter(models.User.id == accept.id).first()
+    print(targetuser)
+    if user.role.value == "supervisor" or user.role.value == "user":
 
-    if user.role.value == "admin" or user.role.value == "supervisor":
         user_id = accept.id
         table_name = accept.table_name
         metadata = MetaData()
         table = Table(table_name, metadata, autoload_with=db.bind)
+        if user.id == targetuser.ParentId:
+            update_status_stmt = update(table).where(table.c.user_id == user_id).values(
+                time_sheet_status=accept.status
+            )
+            db.execute(update_status_stmt)
+            db.commit()
 
-        update_status_stmt = update(table).where(table.c.user_id == user_id).values(
-            time_sheet_status=accept.status
-        )
-        db.execute(update_status_stmt)
-        db.commit()
+            return HTTPException(status_code=200, detail="تاییدیه با موفقیت ثبت شد.")
 
-        # ذخی
-        return HTTPException(status_code=200, detail="تاییدیه با موفقیت ثبت شد.")
-
-    else:
-        raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
+        else:
+            raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
 
 
 @app.post("/api/v1/user/forgot_password", tags=["admin"])
@@ -852,8 +853,19 @@ async def total_presence(date: total_presence, db: Session = Depends(get_db), to
 
     # نمایش نتیجه نهایی
     formatted_time = f"{total_hours:02}:{total_minutes:02}"
+    count_query = select(
+        func.count()
+    ).where(
+        table.c.day_type == 0,
+        table.c.user_id == date.id
+    )
 
-    total_time_str1 = '153:00'
+    # اجرای کوئری
+    result = db.execute(count_query).scalar()
+
+    result = 9 * result
+
+    total_time_str1 = f"{result}:00"
     total_time1 = time_str_to_timedelta1(total_time_str1)
     deduction_time1 = time_str_to_timedelta1(formatted_time)
 
@@ -961,6 +973,6 @@ async def accountant(tablename: accountant_role, db: Session = Depends(get_db), 
             }
             user_list.append(user_dict)
 
-        return user_list
+        return HTTPException(status_code=200, detail=user_list)
     else:
-        return HTTPException(status_code=403 ,detail="شما  قادر به انجام این عملیات نیستین .")
+        return HTTPException(status_code=403, detail="شما  قادر به انجام این عملیات نیستین .")
