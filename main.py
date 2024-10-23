@@ -7,7 +7,7 @@ from dynamic_models import Role, User, UserLogin, UserUpdate, Time_sheet_edit, D
 
 from passlib.context import CryptContext
 from typing import List
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, aliased
 from enum import Enum
 from auth.jwt_bearer import JWTBearer
 import models
@@ -53,14 +53,18 @@ async def fetch_users(db: Session = Depends(get_db), token: str = Depends(JWTBea
     # بررسی اینکه آیا کاربر یافت شده است یا خیر
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
-
+    Parent = aliased(models.User)
     # بررسی نقش کاربر
     if user.role.value == "admin" or user.role.value == "accountant":
         users = db.query(models.User.id,
                          models.User.UserName,
                          models.User.Name,
                          models.User.role,
-                         models.User.ParentId).all()
+                         models.User.ParentId,
+                         Parent.Name.label("ParentName")
+                         ).outerjoin(
+            Parent, models.User.ParentId == Parent.id  # انجام outer join بین کاربر و والدین
+        ).all()
         user_list = []
         for user in users:
             user_dict = {
@@ -68,16 +72,26 @@ async def fetch_users(db: Session = Depends(get_db), token: str = Depends(JWTBea
                 "UserName": user.UserName,
                 "Name": user.Name,
                 "role": user.role.value,  # چون نقش به صورت Enum است، مقدار آن را استخراج می‌کنیم
-                "ParentId": user.ParentId
+                "ParentId": user.ParentId,
+                "ParentName": user.ParentName
             }
             user_list.append(user_dict)
     elif user.role.value == "supervisor" or user.role.value == "user":
-        supervisor_list = db.query(models.User.id,
-                                   models.User.UserName,
-                                   models.User.Name,
-                                   models.User.role,
-                                   models.User.ParentId).filter(or_(
-            models.User.ParentId == user.id, models.User.id == user.id)).all()
+        Parent = aliased(models.User)
+
+        # اجرای کوئری برای دریافت لیست کاربران به همراه اطلاعات والد و فیلتر والدین یا خود کاربر
+        supervisor_list = db.query(
+            models.User.id,
+            models.User.UserName,
+            models.User.Name,
+            models.User.role,
+            models.User.ParentId,
+            Parent.Name.label("ParentName")  # گرفتن نام والد
+        ).outerjoin(
+            Parent, models.User.ParentId == Parent.id  # self-join برای گرفتن اطلاعات والد
+        ).filter(
+            or_(models.User.ParentId == user.id, models.User.id == user.id)  # فیلتر برای والد یا خود کاربر
+        ).all()
         user_list = []
         for supervisor in supervisor_list:
             user_dict = {
@@ -85,8 +99,8 @@ async def fetch_users(db: Session = Depends(get_db), token: str = Depends(JWTBea
                 "UserName": supervisor.UserName,
                 "Name": supervisor.Name,
                 "role": supervisor.role.value,  # چون نقش به صورت Enum است، مقدار آن را استخراج می‌کنیم
-                "ParentId": supervisor.ParentId
-            }
+                "ParentId": supervisor.ParentId,
+                "ParentName": supervisor.ParentName}
 
             user_list.append(user_dict)
     else:
