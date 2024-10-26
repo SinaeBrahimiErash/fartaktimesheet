@@ -55,7 +55,7 @@ async def fetch_users(db: Session = Depends(get_db), token: str = Depends(JWTBea
         raise HTTPException(status_code=404, detail="User not found")
     Parent = aliased(models.User)
     # بررسی نقش کاربر
-    if user.role.value == "admin" or user.role.value == "accountant":
+    if user.role.value == "admin":
         users = db.query(models.User.id,
                          models.User.UserName,
                          models.User.Name,
@@ -76,7 +76,7 @@ async def fetch_users(db: Session = Depends(get_db), token: str = Depends(JWTBea
                 "ParentName": user.ParentName
             }
             user_list.append(user_dict)
-    elif user.role.value == "supervisor" or user.role.value == "user":
+    elif user.role.value == "supervisor" or user.role.value == "user" or user.role.value == "accountant":
         Parent = aliased(models.User)
 
         # اجرای کوئری برای دریافت لیست کاربران به همراه اطلاعات والد و فیلتر والدین یا خود کاربر
@@ -987,6 +987,6 @@ async def accountant(tablename: accountant_role, db: Session = Depends(get_db), 
             }
             user_list.append(user_dict)
 
-        return HTTPException(status_code=200, detail=user_list)
+        return user_list
     else:
         return HTTPException(status_code=403, detail="شما  قادر به انجام این عملیات نیستین .")
