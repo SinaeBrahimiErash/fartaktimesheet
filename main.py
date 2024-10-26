@@ -758,7 +758,7 @@ async def time_sheet_status(accept: Time_Sheet_Status, db: Session = Depends(get
     user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
     targetuser = db.query(models.User).filter(models.User.id == accept.id).first()
     print(targetuser)
-    if user.role.value != "admin" :
+    if user.role.value != "admin":
 
         user_id = accept.id
         table_name = accept.table_name
@@ -928,9 +928,19 @@ def calculate_total_presence_and_work_deficit(user_id, table_name, db):
     total_hours = int(total_seconds // 3600)
     total_minutes = int((total_seconds % 3600) // 60)
     formatted_time = f"{total_hours:02}:{total_minutes:02}"
+    count_query = select(
+        func.count()
+    ).where(
+        table.c.day_type == 0,
+        table.c.user_id == user_id
+    )
 
+    # اجرای کوئری
+    result1 = db.execute(count_query).scalar()
+
+    result1 = 9 * result1
     # برای مثال: مقایسه با '153:00' به عنوان زمان استاندارد
-    total_time_str1 = '153:00'
+    total_time_str1 = f"{result1}:00"
     hours1, minutes1 = map(int, total_time_str1.split(':'))
     total_time1 = timedelta(hours=hours1, minutes=minutes1)
 
