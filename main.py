@@ -758,7 +758,7 @@ async def time_sheet_status(accept: Time_Sheet_Status, db: Session = Depends(get
     user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
     targetuser = db.query(models.User).filter(models.User.id == accept.id).first()
     print(targetuser)
-    if user.role.value == "supervisor" or user.role.value == "user":
+    if user.role.value != "admin" :
 
         user_id = accept.id
         table_name = accept.table_name
