@@ -63,7 +63,8 @@ async def fetch_users(db: Session = Depends(get_db), token: str = Depends(JWTBea
             if table_name.isdigit():
                 try:
                     table = Table(table_name, MetaData(), autoload_with=db.bind)
-                    query = db.query(table.c.time_sheet_status).filter(table.c.user_id == user_id, table.c.time_sheet_status == 0)
+                    query = db.query(table.c.time_sheet_status).filter(table.c.user_id == user_id,
+                                                                       table.c.time_sheet_status == 0)
                     if db.execute(query).fetchone():
                         return True  # کاربر با status=0 پیدا شد
                 except NoSuchTableError:
@@ -657,16 +658,18 @@ async def edit_time_sheet(time_sheet_edit: Time_sheet_edit, db: Session = Depend
     user_id = time_sheet_edit.id
     date = time_sheet_edit.date
     times = time_sheet_edit.newtime
-
     # بررسی اینکه آیا کاربر ادمین است یا ID کاربر با ID درخواستی مطابقت دارد
     if user.role.value != "admin" and user.id != user_id:
         raise HTTPException(status_code=403, detail="شما قادر به انجام این عملیات نیستید.")
     newtime_str = ','.join(times)
-    try:
-        # بارگذاری متادیتا و دریافت جدول
-        metadata = MetaData()
-        table = Table(table_name, metadata, autoload_with=db.bind)
 
+    # بارگذاری متادیتا و دریافت جدول
+    metadata = MetaData()
+    table = Table(table_name, metadata, autoload_with=db.bind)
+
+    cant_edit = db.query(table.c.time_sheet_status).filter((table.c.user_id == user_id)).first()
+    print(cant_edit)
+    if cant_edit[0] == False:
         # یافتن ردیفی که با user_id و date مطابقت دارد
         stmt = table.select().where(table.c.user_id == user_id).where(table.c.date == date)
         result = db.execute(stmt).fetchone()
@@ -682,9 +685,8 @@ async def edit_time_sheet(time_sheet_edit: Time_sheet_edit, db: Session = Depend
         db.commit()
 
         return {"detail": "ویرایش با موفقیت انجام شد."}
-
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"خطا در ویرایش داده‌ها: {e}")
+    else:
+        raise HTTPException(status_code=404, detail="بعد از تایید توسط مدیر امکان ویرایش وجود ندارد .")
 
 
 @app.post("/api/v1/description", tags=['admin'])
