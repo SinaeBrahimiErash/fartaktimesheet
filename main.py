@@ -4,7 +4,7 @@ from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.security import HTTPAuthorizationCredentials
 from dynamic_models import Role, User, UserLogin, UserUpdate, Time_sheet_edit, Desciption, UpdateProfile, \
     total_presence, Time_Sheet_Status, accountant_role
-
+from sqlalchemy.exc import NoSuchTableError
 from passlib.context import CryptContext
 from typing import List
 from sqlalchemy.orm import Session, aliased
@@ -49,12 +49,27 @@ async def fetch_users(db: Session = Depends(get_db), token: str = Depends(JWTBea
 
     # جستجوی کاربر در پایگاه داده با استفاده از userID از توکن
     user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
-
-    # بررسی اینکه آیا کاربر یافت شده است یا خیر
     if user is None:
         raise HTTPException(status_code=404, detail="User not found")
+
     Parent = aliased(models.User)
-    # بررسی نقش کاربر
+    user_list = []
+    inspector = inspect(db.bind)
+    table_names = inspector.get_table_names()
+
+    def check_user_status_in_tables(user_id):
+        for table_name in table_names:
+            # چک کنید که نام جدول عدد باشد
+            if table_name.isdigit():
+                try:
+                    table = Table(table_name, MetaData(), autoload_with=db.bind)
+                    query = db.query(table.c.time_sheet_status).filter(table.c.user_id == user_id, table.c.time_sheet_status == 0)
+                    if db.execute(query).fetchone():
+                        return True  # کاربر با status=0 پیدا شد
+                except NoSuchTableError:
+                    continue  # در صورت نبود جدول، ادامه بدهید
+        return False  # کاربر با status=0 پیدا نشد
+
     if user.role.value == "admin":
         users = db.query(models.User.id,
                          models.User.UserName,
@@ -63,49 +78,113 @@ async def fetch_users(db: Session = Depends(get_db), token: str = Depends(JWTBea
                          models.User.ParentId,
                          Parent.Name.label("ParentName")
                          ).outerjoin(
-            Parent, models.User.ParentId == Parent.id  # انجام outer join بین کاربر و والدین
+            Parent, models.User.ParentId == Parent.id
         ).all()
-        user_list = []
         for user in users:
+            has_status_zero = check_user_status_in_tables(user.id)
             user_dict = {
                 "id": user.id,
                 "UserName": user.UserName,
                 "Name": user.Name,
-                "role": user.role.value,  # چون نقش به صورت Enum است، مقدار آن را استخراج می‌کنیم
+                "role": user.role.value,
                 "ParentId": user.ParentId,
-                "ParentName": user.ParentName
+                "ParentName": user.ParentName,
+                "has_status_zero": has_status_zero
             }
             user_list.append(user_dict)
-    elif user.role.value == "supervisor" or user.role.value == "user" or user.role.value == "accountant":
-        Parent = aliased(models.User)
-
-        # اجرای کوئری برای دریافت لیست کاربران به همراه اطلاعات والد و فیلتر والدین یا خود کاربر
+    elif user.role.value in ["supervisor", "user", "accountant"]:
         supervisor_list = db.query(
             models.User.id,
             models.User.UserName,
             models.User.Name,
             models.User.role,
             models.User.ParentId,
-            Parent.Name.label("ParentName")  # گرفتن نام والد
+            Parent.Name.label("ParentName")
         ).outerjoin(
-            Parent, models.User.ParentId == Parent.id  # self-join برای گرفتن اطلاعات والد
+            Parent, models.User.ParentId == Parent.id
         ).filter(
-            or_(models.User.ParentId == user.id, models.User.id == user.id)  # فیلتر برای والد یا خود کاربر
+            or_(models.User.ParentId == user.id, models.User.id == user.id)
         ).all()
-        user_list = []
         for supervisor in supervisor_list:
+            has_status_zero = check_user_status_in_tables(supervisor.id)
             user_dict = {
                 "id": supervisor.id,
                 "UserName": supervisor.UserName,
                 "Name": supervisor.Name,
-                "role": supervisor.role.value,  # چون نقش به صورت Enum است، مقدار آن را استخراج می‌کنیم
+                "role": supervisor.role.value,
                 "ParentId": supervisor.ParentId,
-                "ParentName": supervisor.ParentName}
-
+                "ParentName": supervisor.ParentName,
+                "has_status_zero": has_status_zero
+            }
             user_list.append(user_dict)
     else:
         raise HTTPException(status_code=403, detail='شما به این عملیات دسترسی ندارید.')
+
     return user_list
+    # payload = decodeJWT(token)
+    # if not payload:
+    #     raise HTTPException(status_code=401, detail="Invalid token or token expired")
+    #
+    # # جستجوی کاربر در پایگاه داده با استفاده از userID از توکن
+    # user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
+    #
+    # # بررسی اینکه آیا کاربر یافت شده است یا خیر
+    # if user is None:
+    #     raise HTTPException(status_code=404, detail="User not found")
+    # Parent = aliased(models.User)
+    #
+    # # بررسی نقش کاربر
+    # if user.role.value == "admin":
+    #     users = db.query(models.User.id,
+    #                      models.User.UserName,
+    #                      models.User.Name,
+    #                      models.User.role,
+    #                      models.User.ParentId,
+    #                      Parent.Name.label("ParentName")
+    #                      ).outerjoin(
+    #         Parent, models.User.ParentId == Parent.id  # انجام outer join بین کاربر و والدین
+    #     ).all()
+    #     user_list = []
+    #     for user in users:
+    #         user_dict = {
+    #             "id": user.id,
+    #             "UserName": user.UserName,
+    #             "Name": user.Name,
+    #             "role": user.role.value,  # چون نقش به صورت Enum است، مقدار آن را استخراج می‌کنیم
+    #             "ParentId": user.ParentId,
+    #             "ParentName": user.ParentName
+    #         }
+    #         user_list.append(user_dict)
+    # elif user.role.value == "supervisor" or user.role.value == "user" or user.role.value == "accountant":
+    #     Parent = aliased(models.User)
+    #
+    #     # اجرای کوئری برای دریافت لیست کاربران به همراه اطلاعات والد و فیلتر والدین یا خود کاربر
+    #     supervisor_list = db.query(
+    #         models.User.id,
+    #         models.User.UserName,
+    #         models.User.Name,
+    #         models.User.role,
+    #         models.User.ParentId,
+    #         Parent.Name.label("ParentName")  # گرفتن نام والد
+    #     ).outerjoin(
+    #         Parent, models.User.ParentId == Parent.id  # self-join برای گرفتن اطلاعات والد
+    #     ).filter(
+    #         or_(models.User.ParentId == user.id, models.User.id == user.id)  # فیلتر برای والد یا خود کاربر
+    #     ).all()
+    #     user_list = []
+    #     for supervisor in supervisor_list:
+    #         user_dict = {
+    #             "id": supervisor.id,
+    #             "UserName": supervisor.UserName,
+    #             "Name": supervisor.Name,
+    #             "role": supervisor.role.value,  # چون نقش به صورت Enum است، مقدار آن را استخراج می‌کنیم
+    #             "ParentId": supervisor.ParentId,
+    #             "ParentName": supervisor.ParentName}
+    #
+    #         user_list.append(user_dict)
+    # else:
+    #     raise HTTPException(status_code=403, detail='شما به این عملیات دسترسی ندارید.')
+    # return user_list
 
 
 @app.post('/api/v1/user/profile', tags=["Post"])
@@ -539,7 +618,7 @@ async def get_user_data(user_id: int, year_month: str, db: Session = Depends(get
         # جستجوی داده‌ها برای user_id مشخص شده
         date = query_data_from_table(table, user_id, db)
         if len(date) == 0:
-            raise HTTPException(status_code=404, detail='کاربر یافت نشد.')
+            raise HTTPException(status_code=404, detail='اطلاعاتی یافت نشد.')
         status = {"status": date[0][6]}
         arry = []
         for i in date:
