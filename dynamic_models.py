@@ -21,7 +21,7 @@ class User(BaseModel):
 
 
 class UserUpdate(BaseModel):
-    #UserName: Optional[str] = None
+    # UserName: Optional[str] = None
     Name: Optional[str] = None
     password: Optional[str] = None
     ParentId: float | None = None
@@ -65,3 +65,9 @@ class total_presence(BaseModel):
 
 class accountant_role(BaseModel):
     table_name: str
+
+
+class leave_status(BaseModel):
+    date: str
+    table_name: str
+    status: bool

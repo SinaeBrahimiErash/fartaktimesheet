@@ -3,7 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.security import HTTPAuthorizationCredentials
 from dynamic_models import Role, User, UserLogin, UserUpdate, Time_sheet_edit, Desciption, UpdateProfile, \
-    total_presence, Time_Sheet_Status, accountant_role
+    total_presence, Time_Sheet_Status, accountant_role, leave_status
 from sqlalchemy.exc import NoSuchTableError
 from passlib.context import CryptContext
 from typing import List
@@ -122,70 +122,6 @@ async def fetch_users(db: Session = Depends(get_db), token: str = Depends(JWTBea
         raise HTTPException(status_code=403, detail='شما به این عملیات دسترسی ندارید.')
 
     return user_list
-    # payload = decodeJWT(token)
-    # if not payload:
-    #     raise HTTPException(status_code=401, detail="Invalid token or token expired")
-    #
-    # # جستجوی کاربر در پایگاه داده با استفاده از userID از توکن
-    # user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
-    #
-    # # بررسی اینکه آیا کاربر یافت شده است یا خیر
-    # if user is None:
-    #     raise HTTPException(status_code=404, detail="User not found")
-    # Parent = aliased(models.User)
-    #
-    # # بررسی نقش کاربر
-    # if user.role.value == "admin":
-    #     users = db.query(models.User.id,
-    #                      models.User.UserName,
-    #                      models.User.Name,
-    #                      models.User.role,
-    #                      models.User.ParentId,
-    #                      Parent.Name.label("ParentName")
-    #                      ).outerjoin(
-    #         Parent, models.User.ParentId == Parent.id  # انجام outer join بین کاربر و والدین
-    #     ).all()
-    #     user_list = []
-    #     for user in users:
-    #         user_dict = {
-    #             "id": user.id,
-    #             "UserName": user.UserName,
-    #             "Name": user.Name,
-    #             "role": user.role.value,  # چون نقش به صورت Enum است، مقدار آن را استخراج می‌کنیم
-    #             "ParentId": user.ParentId,
-    #             "ParentName": user.ParentName
-    #         }
-    #         user_list.append(user_dict)
-    # elif user.role.value == "supervisor" or user.role.value == "user" or user.role.value == "accountant":
-    #     Parent = aliased(models.User)
-    #
-    #     # اجرای کوئری برای دریافت لیست کاربران به همراه اطلاعات والد و فیلتر والدین یا خود کاربر
-    #     supervisor_list = db.query(
-    #         models.User.id,
-    #         models.User.UserName,
-    #         models.User.Name,
-    #         models.User.role,
-    #         models.User.ParentId,
-    #         Parent.Name.label("ParentName")  # گرفتن نام والد
-    #     ).outerjoin(
-    #         Parent, models.User.ParentId == Parent.id  # self-join برای گرفتن اطلاعات والد
-    #     ).filter(
-    #         or_(models.User.ParentId == user.id, models.User.id == user.id)  # فیلتر برای والد یا خود کاربر
-    #     ).all()
-    #     user_list = []
-    #     for supervisor in supervisor_list:
-    #         user_dict = {
-    #             "id": supervisor.id,
-    #             "UserName": supervisor.UserName,
-    #             "Name": supervisor.Name,
-    #             "role": supervisor.role.value,  # چون نقش به صورت Enum است، مقدار آن را استخراج می‌کنیم
-    #             "ParentId": supervisor.ParentId,
-    #             "ParentName": supervisor.ParentName}
-    #
-    #         user_list.append(user_dict)
-    # else:
-    #     raise HTTPException(status_code=403, detail='شما به این عملیات دسترسی ندارید.')
-    # return user_list
 
 
 @app.post('/api/v1/user/profile', tags=["Post"])
@@ -420,6 +356,7 @@ async def read_and_process_excel(file: UploadFile):
             final_times = ""
             total_presence = ""
             time_sheet_status = 0
+            leave_status = 0
             if date in user_data['date'].values:
                 time = user_data[user_data['date'] == date]['time'].values[0]
                 times = time.split(',')
@@ -450,7 +387,8 @@ async def read_and_process_excel(file: UploadFile):
                 'times_edited': times_edited,
                 'time_sheet_status': time_sheet_status,
                 'final_times': final_times,
-                'total_presence': total_presence
+                'total_presence': total_presence,
+                'leave_status': leave_status
             })
 
     # تبدیل لیست نهایی به DataFrame
@@ -488,7 +426,8 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
                 Column('times_edited', String),
                 Column('time_sheet_status', Boolean),
                 Column('final_times', String),
-                Column('total_presence', String)
+                Column('total_presence', String),
+                Column('leave_status', Boolean)
             )
 
             metadata.create_all(bind=db.bind)
@@ -506,7 +445,8 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
                         times_edited=row['times_edited'],
                         time_sheet_status=row['time_sheet_status'],
                         final_times=row['final_times'],
-                        total_presence=row['total_presence']
+                        total_presence=row['total_presence'],
+                        leave_status=row['leave_status']
                     )
                     db.execute(insert_stmt)
                 except Exception as e:
@@ -631,7 +571,8 @@ async def get_user_data(user_id: int, year_month: str, db: Session = Depends(get
                 times = []
             times_in_h_and_m = convert_time_to_hours_and_minutes(i[8])
             arry.append({"id": i[0], "date": i[1], "times": times, "date_type": i[3], 'description': i[4],
-                         'times_edited': times_edited, 'final_times': i[7], 'total_presence': times_in_h_and_m})
+                         'times_edited': times_edited, 'final_times': i[7], 'total_presence': times_in_h_and_m,
+                         'leave_status': i[9]})
 
         return {"data": arry, "status": status}
     else:
@@ -910,14 +851,15 @@ async def total_presence(date: total_presence, db: Session = Depends(get_db), to
     # کوئری برای دریافت مقدار total_presence و در نظر گرفتن 1.5 برای روزهای تعطیل (day_type == 1)
     presence_values_query = select(
         table.c.day_type,  # day_type را هم انتخاب می‌کنیم
-        table.c.total_presence
+        table.c.total_presence,
+        table.c.leave_status
     ).where(
         table.c.user_id == user_id  # شرط برای user_id مشخص
     )
 
     # اجرای کوئری برای دریافت تمام مقادیر
     result = db.execute(presence_values_query).fetchall()
-
+    print(result)
     # استخراج مقادیر total_presence و day_type
     def time_str_to_timedelta(time_str):
         hours, minutes, seconds = map(int, time_str.split(':'))
@@ -934,13 +876,22 @@ async def total_presence(date: total_presence, db: Session = Depends(get_db), to
     total_time1 = timedelta()
 
     # حلقه برای پردازش هر تاپل و اعمال ضرب 1.5 در صورت نیاز
-    for day_type, time_str in result:
+    for day_type, time_str, leave_status in result:
         time_delta = time_str_to_timedelta(time_str)
 
         if day_type == '1':  # اگر day_type برابر با 1 باشد
             time_delta *= 1.5  # مقدار زمان را 1.5 برابر کن
 
         total_time += time_delta  # جمع زدن زمان به مجموع
+    total_leave = 0
+    for day_type, time_str, leave_status in result:
+        time_leave = time_str_to_timedelta(time_str)
+
+        total_second = time_leave.total_seconds()
+
+        if leave_status == 1:
+            total_leave +=( 32400 - time_leave.total_seconds())
+    total_leave=total_leave /60
     # محاسبه ساعت و دقیقه نهایی از total_time
     total_seconds = total_time.total_seconds()
     total_hours = int(total_seconds // 3600)
@@ -977,7 +928,8 @@ async def total_presence(date: total_presence, db: Session = Depends(get_db), to
     work_deficit = f"{hours1:02}:{minet:02}"
 
     return HTTPException(status_code=200, detail={"total_presence": formatted_time,
-                                                  "work_deficit": minutes1})
+                                                  "work_deficit": minutes1,
+                                                 "total_leave":total_leave })
 
 
 def calculate_total_presence_and_work_deficit(user_id, table_name, db):
@@ -1081,3 +1033,29 @@ async def accountant(tablename: accountant_role, db: Session = Depends(get_db), 
         return user_list
     else:
         return HTTPException(status_code=403, detail="شما  قادر به انجام این عملیات نیستین .")
+
+
+@app.post("/api/v1/user/leave-status")
+async def leave_status(data: leave_status, db: Session = Depends(get_db), token: str = Depends(JWTBearer())):
+    payload = decodeJWT(token)
+    if not payload:
+        raise HTTPException(status_code=403, detail="Invalid token or token expired")
+
+    user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
+
+    user_id = user.id
+    table_name = data.table_name
+    day = data.date
+    status = data.status
+    print(user_id, table_name, status)
+    metadata = MetaData()
+    try:
+        table = Table(table_name, metadata, autoload_with=db.bind)
+        update_status_stmt = update(table).where(and_(table.c.user_id == user_id, table.c.date == day)).values(
+            leave_status=status
+        )
+        db.execute(update_status_stmt)
+        db.commit()
+        return HTTPException(status_code=200, detail="با موفقیت ثبت شد .")
+    except:
+        return HTTPException(status_code=404, detail="شما قادر به انجام این عملیات نیستید .")
