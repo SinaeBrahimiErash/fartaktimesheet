@@ -609,7 +609,7 @@ async def edit_time_sheet(time_sheet_edit: Time_sheet_edit, db: Session = Depend
     table = Table(table_name, metadata, autoload_with=db.bind)
 
     cant_edit = db.query(table.c.time_sheet_status).filter((table.c.user_id == user_id)).first()
-    print(cant_edit)
+
     if cant_edit[0] == False:
         # یافتن ردیفی که با user_id و date مطابقت دارد
         stmt = table.select().where(table.c.user_id == user_id).where(table.c.date == date)
@@ -779,7 +779,7 @@ async def time_sheet_status(accept: Time_Sheet_Status, db: Session = Depends(get
 
     user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
     targetuser = db.query(models.User).filter(models.User.id == accept.id).first()
-    print(targetuser)
+
     if user.role.value != "admin":
 
         user_id = accept.id
@@ -859,7 +859,7 @@ async def total_presence(date: total_presence, db: Session = Depends(get_db), to
 
     # اجرای کوئری برای دریافت تمام مقادیر
     result = db.execute(presence_values_query).fetchall()
-    print(result)
+
     # استخراج مقادیر total_presence و day_type
     def time_str_to_timedelta(time_str):
         hours, minutes, seconds = map(int, time_str.split(':'))
@@ -985,8 +985,16 @@ def calculate_total_presence_and_work_deficit(user_id, table_name, db):
     # minutes1 = int((total_seconds1 % 3600) // 60)
     minutes1 = int(total_seconds1 // 60)
     # work_deficit = f"{hours1:02}:{minutes1:02}"
+    total_leave=0
+    for day_type, time_str, leave_status in result:
+        time_leave = time_str_to_timedelta(time_str)
 
-    return formatted_time, minutes1
+        total_second = time_leave.total_seconds()
+
+        if leave_status == 1:
+            total_leave += (32400 - time_leave.total_seconds())
+    total_leave = total_leave / 60
+    return formatted_time, minutes1 ,total_leave
 
 
 @app.post("/api/v1/user/accountant-role")
@@ -1019,14 +1027,15 @@ async def accountant(tablename: accountant_role, db: Session = Depends(get_db), 
         ).filter(table.c.time_sheet_status == 1).distinct().all()
         user_list = []
         for user in users:
-            total_presence, work_deficit = calculate_total_presence_and_work_deficit(user.id, table_name, db)
+            total_presence, work_deficit ,total_leave = calculate_total_presence_and_work_deficit(user.id, table_name, db)
             user_dict = {
                 "id": user.id,
                 "UserName": user.UserName,
                 "Name": user.Name,
                 "ParentId": user.ParentId,
                 "total_presence": total_presence,
-                "work_deficit": work_deficit
+                "work_deficit": work_deficit,
+                "total_leave":total_leave
             }
             user_list.append(user_dict)
 
@@ -1047,7 +1056,7 @@ async def leave_status(data: leave_status, db: Session = Depends(get_db), token:
     table_name = data.table_name
     day = data.date
     status = data.status
-    print(user_id, table_name, status)
+
     metadata = MetaData()
     try:
         table = Table(table_name, metadata, autoload_with=db.bind)
