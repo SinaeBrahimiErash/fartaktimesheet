@@ -3,7 +3,7 @@ from sqlalchemy.exc import IntegrityError
 from fastapi import FastAPI, HTTPException, Depends, UploadFile, File
 from fastapi.security import HTTPAuthorizationCredentials
 from dynamic_models import Role, User, UserLogin, UserUpdate, Time_sheet_edit, Desciption, UpdateProfile, \
-    total_presence, Time_Sheet_Status, accountant_role, leave_status
+    total_presence, Time_Sheet_Status, accountant_role, leave_status, leave_sheet
 from sqlalchemy.exc import NoSuchTableError
 from passlib.context import CryptContext
 from typing import List
@@ -935,7 +935,7 @@ async def total_presence(date: total_presence, db: Session = Depends(get_db), to
 def calculate_total_presence_and_work_deficit(user_id, table_name, db):
     metadata = MetaData()
     table = Table(table_name, metadata, autoload_with=db.bind)
-
+    print(table)
     presence_values_query = select(
         table.c.day_type,
         table.c.total_presence,
@@ -1070,3 +1070,23 @@ async def leave_status(data: leave_status, db: Session = Depends(get_db), token:
         return HTTPException(status_code=200, detail="با موفقیت ثبت شد .")
     except:
         return HTTPException(status_code=404, detail="شما قادر به انجام این عملیات نیستید .")
+
+
+@app.post("/api/v1/user/leave-sheet")
+async def leave_sheet(data: leave_sheet, db: Session = Depends(get_db), token: str = Depends(JWTBearer())):
+    payload = decodeJWT(token)
+    if not payload:
+        raise HTTPException(status_code=403, detail="Invalid token or token expired")
+
+    user = db.query(models.User).filter(models.User.UserName == payload["username"]).first()
+    table_name1 = data.table_name
+    try:
+        total_presence, work_deficit, total_leave = calculate_total_presence_and_work_deficit(user.id, table_name1, db)
+        user_info = {
+            "total_presence": total_presence,
+            "work_deficit": work_deficit,
+            "total_leave": total_leave
+        }
+        return user_info
+    except:
+        return HTTPException(status_code=200 ,detail="شما قادر به نجام این عملیات نیستید .")
