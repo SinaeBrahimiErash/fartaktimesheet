@@ -71,3 +71,7 @@ class leave_status(BaseModel):
     date: str
     table_name: str
     status: bool
+
+
+class leave_sheet(BaseModel):
+    table_name: str
