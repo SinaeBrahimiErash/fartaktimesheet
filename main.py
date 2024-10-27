@@ -890,8 +890,8 @@ async def total_presence(date: total_presence, db: Session = Depends(get_db), to
         total_second = time_leave.total_seconds()
 
         if leave_status == 1:
-            total_leave +=( 32400 - time_leave.total_seconds())
-    total_leave=total_leave /60
+            total_leave += (32400 - time_leave.total_seconds())
+    total_leave = total_leave / 60
     # محاسبه ساعت و دقیقه نهایی از total_time
     total_seconds = total_time.total_seconds()
     total_hours = int(total_seconds // 3600)
@@ -929,7 +929,7 @@ async def total_presence(date: total_presence, db: Session = Depends(get_db), to
 
     return HTTPException(status_code=200, detail={"total_presence": formatted_time,
                                                   "work_deficit": minutes1,
-                                                 "total_leave":total_leave })
+                                                  "total_leave": total_leave})
 
 
 def calculate_total_presence_and_work_deficit(user_id, table_name, db):
@@ -938,7 +938,8 @@ def calculate_total_presence_and_work_deficit(user_id, table_name, db):
 
     presence_values_query = select(
         table.c.day_type,
-        table.c.total_presence
+        table.c.total_presence,
+        table.c.leave_status
     ).where(
         table.c.user_id == user_id
     )
@@ -951,7 +952,7 @@ def calculate_total_presence_and_work_deficit(user_id, table_name, db):
 
     total_time = timedelta()
 
-    for day_type, time_str in result:
+    for day_type, time_str, leave_status in result:
         time_delta = time_str_to_timedelta(time_str)
         if day_type == '1':
             time_delta *= 1.5
@@ -985,7 +986,7 @@ def calculate_total_presence_and_work_deficit(user_id, table_name, db):
     # minutes1 = int((total_seconds1 % 3600) // 60)
     minutes1 = int(total_seconds1 // 60)
     # work_deficit = f"{hours1:02}:{minutes1:02}"
-    total_leave=0
+    total_leave = 0
     for day_type, time_str, leave_status in result:
         time_leave = time_str_to_timedelta(time_str)
 
@@ -994,7 +995,7 @@ def calculate_total_presence_and_work_deficit(user_id, table_name, db):
         if leave_status == 1:
             total_leave += (32400 - time_leave.total_seconds())
     total_leave = total_leave / 60
-    return formatted_time, minutes1 ,total_leave
+    return formatted_time, minutes1, total_leave
 
 
 @app.post("/api/v1/user/accountant-role")
@@ -1027,7 +1028,8 @@ async def accountant(tablename: accountant_role, db: Session = Depends(get_db), 
         ).filter(table.c.time_sheet_status == 1).distinct().all()
         user_list = []
         for user in users:
-            total_presence, work_deficit ,total_leave = calculate_total_presence_and_work_deficit(user.id, table_name, db)
+            total_presence, work_deficit, total_leave = calculate_total_presence_and_work_deficit(user.id, table_name,
+                                                                                                  db)
             user_dict = {
                 "id": user.id,
                 "UserName": user.UserName,
@@ -1035,7 +1037,7 @@ async def accountant(tablename: accountant_role, db: Session = Depends(get_db), 
                 "ParentId": user.ParentId,
                 "total_presence": total_presence,
                 "work_deficit": work_deficit,
-                "total_leave":total_leave
+                "total_leave": total_leave
             }
             user_list.append(user_dict)
 
