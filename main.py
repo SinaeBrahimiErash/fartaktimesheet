@@ -511,7 +511,7 @@ async def get_user_data(user_id: int, year_month: str, db: Session = Depends(get
         except:
             # return HTTPException(status_code=404, detail="جدول یافت نشد .")
 
-            raise HTTPException(status_code=404, detail="اطلاعاتی دریافت نشد .")
+            raise HTTPException(status_code=404, detail="اطلاعاتی یافت نشد .")
         update_final_times = (
             update(table)
             .where(table.c.user_id == user_id)  # شرط برای فیلتر کردن ردیف با id = 101
@@ -1089,4 +1089,4 @@ async def leave_sheet(data: leave_sheet, db: Session = Depends(get_db), token: s
         }
         return user_info
     except:
-        return HTTPException(status_code=200 ,detail="شما قادر به نجام این عملیات نیستید .")
+        return HTTPException(status_code=200 ,detail="اطلاعاتی یافت نشد .")
