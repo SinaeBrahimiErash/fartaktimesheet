@@ -532,10 +532,14 @@ async def get_user_data(user_id: int, year_month: str, db: Session = Depends(get
         rows = result.fetchall()
 
         def convert_time_to_hours_and_minutes(time_str):
-            # تقسیم رشته بر اساس ":" و گرفتن ساعت و دقیقه
-            hours, minutes, _ = time_str.split(':')
-            # برگرداندن ساعت و دقیقه به صورت "hh:mm"
-            return f"{hours}:{minutes}"
+            # # تقسیم رشته بر اساس ":" و گرفتن ساعت و دقیقه
+            # hours, minutes, _ = time_str.split(':')
+            # # برگرداندن ساعت و دقیقه به صورت "hh:mm"
+            # return f"{hours}:{minutes}"
+            hours, minutes = map(int, time_str.split(':')[:2])
+            # تبدیل ساعت به دقیقه و افزودن دقیقه‌ها
+            total_minutes = hours * 60 + minutes
+            return total_minutes
 
         for row in rows:
             user_id = row[0]  # شناسه کاربر
@@ -961,7 +965,7 @@ def calculate_total_presence_and_work_deficit(user_id, table_name, db):
     total_seconds = total_time.total_seconds()
     total_hours = int(total_seconds // 3600)
     total_minutes = int((total_seconds % 3600) // 60)
-    formatted_time = f"{total_hours:02}:{total_minutes:02}"
+    formatted_time = total_seconds // 60
     count_query = select(
         func.count()
     ).where(
@@ -1089,4 +1093,4 @@ async def leave_sheet(data: leave_sheet, db: Session = Depends(get_db), token: s
         }
         return user_info
     except:
-        raise HTTPException(status_code=404 ,detail="اطلاعاتی یافت نشد .")
+        raise HTTPException(status_code=404, detail="اطلاعاتی یافت نشد .")
