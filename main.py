@@ -1089,4 +1089,4 @@ async def leave_sheet(data: leave_sheet, db: Session = Depends(get_db), token: s
         }
         return user_info
     except:
-        return HTTPException(status_code=404 ,detail="اطلاعاتی یافت نشد .")
+        raise HTTPException(status_code=404 ,detail="اطلاعاتی یافت نشد .")
